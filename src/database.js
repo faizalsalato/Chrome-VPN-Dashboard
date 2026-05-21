@@ -56,8 +56,8 @@ function initDatabase() {
   `);
 
   // Seed default admin user
-  const adminUser = process.env.ADMIN_USER || 'admin';
-  const adminPass = process.env.ADMIN_PASS || 'admin123';
+  const adminUser = process.env.ADMIN_USER || 'sakaru';
+  const adminPass = process.env.ADMIN_PASS || 'sakaru';
 
   const existing = database.prepare('SELECT id FROM users WHERE username = ?').get(adminUser);
   if (!existing) {

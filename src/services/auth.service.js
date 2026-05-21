@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { getDb } = require('../database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || 'sakaru';
 const SESSION_EXPIRY = parseInt(process.env.SESSION_EXPIRY || '86400', 10);
 const RATE_LIMIT_WINDOW = 5 * 60; // 5 minutes in seconds
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
