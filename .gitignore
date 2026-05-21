@@ -1,0 +1,9 @@
+node_modules/
+logs/
+*.log
+.env
+dashboard-data/
+data/
+dist/
+build/
+.cache/

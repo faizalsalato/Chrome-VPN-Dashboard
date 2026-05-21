@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Chrome/VPN Manager</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <h1 class="header-title">🖥️ Chrome/VPN Dashboard</h1>
+        <div class="header-actions">
+          <span id="user-info" class="user-info"></span>
+          <button id="logout-btn" class="btn btn-secondary btn-sm">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Connection Status Banner -->
+    <div id="connection-banner" class="connection-banner hidden">
+      <span class="banner-icon">⚠️</span>
+      <span class="banner-text">Conexão com Docker perdida. Controles desabilitados.</span>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Actions Bar -->
+      <div class="actions-bar">
+        <button id="create-btn" class="btn btn-primary">
+          <span class="btn-text">+ Nova Instância</span>
+          <span class="btn-loading hidden">
+            <span class="spinner"></span> Criando...
+          </span>
+        </button>
+        <span id="instance-count" class="instance-count"></span>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="loading-state">
+        <div class="spinner-large"></div>
+        <p>Carregando instâncias...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-state hidden">
+        <p class="empty-icon">📦</p>
+        <p>Nenhuma instância encontrada</p>
+        <p class="empty-hint">Clique em "Nova Instância" para criar uma</p>
+      </div>
+
+      <!-- Instance Grid -->
+      <div id="instance-grid" class="instance-grid hidden"></div>
+    </main>
+
+    <!-- Confirmation Dialog -->
+    <div id="confirm-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 id="dialog-title" class="dialog-title">Confirmar Remoção</h2>
+        <p id="dialog-message" class="dialog-message"></p>
+        <div class="dialog-actions">
+          <button id="dialog-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="dialog-confirm" class="btn btn-danger">Remover</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Instance Dialog -->
+    <div id="create-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">Nova Instância</h2>
+        <div class="form-group">
+          <label for="country-select">País da VPN</label>
+          <select id="country-select" class="form-select">
+            <option value="United States">🇺🇸 United States</option>
+            <option value="United Kingdom">🇬🇧 United Kingdom</option>
+            <option value="Canada">🇨🇦 Canada</option>
+            <option value="Germany">🇩🇪 Germany</option>
+            <option value="France">🇫🇷 France</option>
+            <option value="Netherlands">🇳🇱 Netherlands</option>
+            <option value="Switzerland">🇨🇭 Switzerland</option>
+            <option value="Japan">🇯🇵 Japan</option>
+            <option value="Singapore">🇸🇬 Singapore</option>
+            <option value="Australia">🇦🇺 Australia</option>
+            <option value="Brazil">🇧🇷 Brazil</option>
+            <option value="Italy">🇮🇹 Italy</option>
+            <option value="Spain">🇪🇸 Spain</option>
+            <option value="Sweden">🇸🇪 Sweden</option>
+            <option value="Norway">🇳🇴 Norway</option>
+            <option value="Poland">🇵🇱 Poland</option>
+            <option value="India">🇮🇳 India</option>
+            <option value="South Korea">🇰🇷 South Korea</option>
+            <option value="Mexico">🇲🇽 Mexico</option>
+            <option value="Portugal">🇵🇹 Portugal</option>
+          </select>
+        </div>
+        <div class="dialog-actions">
+          <button id="create-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="create-confirm" class="btn btn-primary">Criar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Country Dialog -->
+    <div id="country-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">Trocar País da VPN</h2>
+        <div class="form-group">
+          <label for="change-country-select">Novo País</label>
+          <select id="change-country-select" class="form-select">
+            <option value="United States">🇺🇸 United States</option>
+            <option value="United Kingdom">🇬🇧 United Kingdom</option>
+            <option value="Canada">🇨🇦 Canada</option>
+            <option value="Germany">🇩🇪 Germany</option>
+            <option value="France">🇫🇷 France</option>
+            <option value="Netherlands">🇳🇱 Netherlands</option>
+            <option value="Switzerland">🇨🇭 Switzerland</option>
+            <option value="Japan">🇯🇵 Japan</option>
+            <option value="Singapore">🇸🇬 Singapore</option>
+            <option value="Australia">🇦🇺 Australia</option>
+            <option value="Brazil">🇧🇷 Brazil</option>
+            <option value="Italy">🇮🇹 Italy</option>
+            <option value="Spain">🇪🇸 Spain</option>
+            <option value="Sweden">🇸🇪 Sweden</option>
+            <option value="Norway">🇳🇴 Norway</option>
+            <option value="Poland">🇵🇱 Poland</option>
+            <option value="India">🇮🇳 India</option>
+            <option value="South Korea">🇰🇷 South Korea</option>
+            <option value="Mexico">🇲🇽 Mexico</option>
+            <option value="Portugal">🇵🇹 Portugal</option>
+          </select>
+        </div>
+        <div class="dialog-actions">
+          <button id="country-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="country-confirm" class="btn btn-primary">Trocar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/instances.js"></script>
+  <script src="/js/polling.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

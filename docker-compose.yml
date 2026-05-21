@@ -1,0 +1,18 @@
+services:
+  dashboard:
+    build: ./
+    container_name: dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/nginx/sites-available:/etc/nginx/sites-available
+      - ./dashboard-data:/app/data
+    environment:
+      - DOMAIN=sakaru.pro
+      - BASE_PORT=3001
+      - MAX_INSTANCES=20
+      - JWT_SECRET=${JWT_SECRET:-super-secret-change-me}
+      - SESSION_EXPIRY=86400
+      - ADMIN_USER=admin
+      - ADMIN_PASS=admin123
+    network_mode: host
+    restart: unless-stopped
