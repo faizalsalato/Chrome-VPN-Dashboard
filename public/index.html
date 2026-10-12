@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Chrome/VPN Manager</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <h1 class="header-title">🖥️ Chrome/VPN Dashboard</h1>
+        <div class="header-actions">
+          <span id="user-info" class="user-info"></span>
+          <button id="logout-btn" class="btn btn-secondary btn-sm">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Connection Status Banner -->
+    <div id="connection-banner" class="connection-banner hidden">
+      <span class="banner-icon">⚠️</span>
+      <span class="banner-text">Conexão com Docker perdida. Controles desabilitados.</span>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Actions Bar -->
+      <div class="actions-bar">
+        <button id="create-btn" class="btn btn-primary">
+          <span class="btn-text">+ Nova Instância</span>
+          <span class="btn-loading hidden">
+            <span class="spinner"></span> Criando...
+          </span>
+        </button>
+        <button id="vpn-creds-btn" class="btn btn-secondary">
+          <span class="btn-text">🔑 Credenciais VPN</span>
+        </button>
+        <span id="instance-count" class="instance-count"></span>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="loading-state">
+        <div class="spinner-large"></div>
+        <p>Carregando instâncias...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-state hidden">
+        <p class="empty-icon">📦</p>
+        <p>Nenhuma instância encontrada</p>
+        <p class="empty-hint">Clique em "Nova Instância" para criar uma</p>
+      </div>
+
+      <!-- Instance Grid -->
+      <div id="instance-grid" class="instance-grid hidden"></div>
+    </main>
+
+    <!-- Confirmation Dialog -->
+    <div id="confirm-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 id="dialog-title" class="dialog-title">Confirmar Remoção</h2>
+        <p id="dialog-message" class="dialog-message"></p>
+        <div class="dialog-actions">
+          <button id="dialog-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="dialog-confirm" class="btn btn-danger">Remover</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Instance Dialog -->
+    <div id="create-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">Nova Instância</h2>
+        <div class="form-group">
+          <label for="instance-type">Tipo de Conexão</label>
+          <select id="instance-type" class="form-select">
+            <option value="vpn" selected>VPN (Surfshark via Gluetun)</option>
+            <option value="proxy">Proxy HTTP/SOCKS</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="instance-browser">Navegador</label>
+          <select id="instance-browser" class="form-select">
+            <option value="chromium" selected>Chromium</option>
+            <option value="brave">Brave</option>
+          </select>
+        </div>
+        <div id="vpn-country-group">
+          <div class="form-group">
+            <label for="country-select">País da VPN</label>
+          <select id="country-select" class="form-select">
+            <option value="Albania">Albania</option>
+            <option value="Algeria">Algeria</option>
+            <option value="Andorra">Andorra</option>
+            <option value="Argentina">Argentina</option>
+            <option value="Armenia">Armenia</option>
+            <option value="Australia">Australia</option>
+            <option value="Austria">Austria</option>
+            <option value="Azerbaijan">Azerbaijan</option>
+            <option value="Bahamas">Bahamas</option>
+            <option value="Bangladesh">Bangladesh</option>
+            <option value="Belgium">Belgium</option>
+            <option value="Belize">Belize</option>
+            <option value="Bhutan">Bhutan</option>
+            <option value="Bolivia">Bolivia</option>
+            <option value="Bosnia and Herzegovina">Bosnia and Herzegovina</option>
+            <option value="Brazil">Brazil</option>
+            <option value="Brunei">Brunei</option>
+            <option value="Bulgaria">Bulgaria</option>
+            <option value="Cambodia">Cambodia</option>
+            <option value="Canada">Canada</option>
+            <option value="Chile">Chile</option>
+            <option value="Colombia">Colombia</option>
+            <option value="Costa Rica">Costa Rica</option>
+            <option value="Croatia">Croatia</option>
+            <option value="Cyprus">Cyprus</option>
+            <option value="Czech Republic">Czech Republic</option>
+            <option value="Denmark">Denmark</option>
+            <option value="Ecuador">Ecuador</option>
+            <option value="Egypt">Egypt</option>
+            <option value="Estonia">Estonia</option>
+            <option value="Finland">Finland</option>
+            <option value="France">France</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Germany">Germany</option>
+            <option value="Ghana">Ghana</option>
+            <option value="Greece">Greece</option>
+            <option value="Greenland">Greenland</option>
+            <option value="Hong Kong">Hong Kong</option>
+            <option value="Hungary">Hungary</option>
+            <option value="Iceland">Iceland</option>
+            <option value="India">India</option>
+            <option value="Indonesia">Indonesia</option>
+            <option value="Ireland">Ireland</option>
+            <option value="Israel">Israel</option>
+            <option value="Italy">Italy</option>
+            <option value="Japan">Japan</option>
+            <option value="Kazakhstan">Kazakhstan</option>
+            <option value="Laos">Laos</option>
+            <option value="Latvia">Latvia</option>
+            <option value="Liechtenstein">Liechtenstein</option>
+            <option value="Lithuania">Lithuania</option>
+            <option value="Luxembourg">Luxembourg</option>
+            <option value="Macau">Macau</option>
+            <option value="Malaysia">Malaysia</option>
+            <option value="Malta">Malta</option>
+            <option value="Mexico">Mexico</option>
+            <option value="Moldova">Moldova</option>
+            <option value="Monaco">Monaco</option>
+            <option value="Mongolia">Mongolia</option>
+            <option value="Montenegro">Montenegro</option>
+            <option value="Myanmar">Myanmar</option>
+            <option value="Nepal">Nepal</option>
+            <option value="Netherlands">Netherlands</option>
+            <option value="New Zealand">New Zealand</option>
+            <option value="Nigeria">Nigeria</option>
+            <option value="North Macedonia">North Macedonia</option>
+            <option value="Norway">Norway</option>
+            <option value="Pakistan">Pakistan</option>
+            <option value="Panama">Panama</option>
+            <option value="Paraguay">Paraguay</option>
+            <option value="Peru">Peru</option>
+            <option value="Philippines">Philippines</option>
+            <option value="Poland">Poland</option>
+            <option value="Portugal">Portugal</option>
+            <option value="Puerto Rico">Puerto Rico</option>
+            <option value="Romania">Romania</option>
+            <option value="Saudi Arabia">Saudi Arabia</option>
+            <option value="Serbia">Serbia</option>
+            <option value="Singapore">Singapore</option>
+            <option value="Slovakia">Slovakia</option>
+            <option value="Slovenia">Slovenia</option>
+            <option value="South Africa">South Africa</option>
+            <option value="South Korea">South Korea</option>
+            <option value="Spain">Spain</option>
+            <option value="Sri Lanka">Sri Lanka</option>
+            <option value="Sweden">Sweden</option>
+            <option value="Switzerland">Switzerland</option>
+            <option value="Taiwan">Taiwan</option>
+            <option value="Thailand">Thailand</option>
+            <option value="Turkey">Turkey</option>
+            <option value="Ukraine">Ukraine</option>
+            <option value="United Arab Emirates">United Arab Emirates</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="United States" selected>United States</option>
+            <option value="Uruguay">Uruguay</option>
+            <option value="Uzbekistan">Uzbekistan</option>
+            <option value="Venezuela">Venezuela</option>
+            <option value="Vietnam">Vietnam</option>
+          </select>
+        </div>
+          <div class="form-group">
+            <label for="vpn-provider">Provedor VPN</label>
+            <select id="vpn-provider" class="form-select">
+              <option value="surfshark" selected>Surfshark</option>
+              <option value="expressvpn">ExpressVPN</option>
+            </select>
+          </div>
+          <p class="form-hint" id="vpn-provider-hint">
+            As credenciais do provedor devem estar salvas em "Credenciais VPN".
+          </p>
+        </div>
+
+        <div id="proxy-fields" class="hidden">
+          <div class="form-group">
+            <label for="proxy-host">Host do Proxy</label>
+            <input type="text" id="proxy-host" class="form-input" placeholder="ex: brd.superproxy.io" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="proxy-port">Porta</label>
+            <input type="number" id="proxy-port" class="form-input" placeholder="ex: 44445" min="1" max="65535" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="proxy-scheme">Esquema</label>
+            <select id="proxy-scheme" class="form-select">
+              <option value="http" selected>HTTP</option>
+              <option value="https">HTTPS</option>
+            </select>
+          </div>
+          <div class="form-group form-checkbox">
+            <label for="proxy-auth">
+              <input type="checkbox" id="proxy-auth" />
+              <span>Proxy requer autenticação (usuário e senha)</span>
+            </label>
+          </div>
+          <div id="proxy-credentials" class="hidden">
+            <div class="form-group">
+              <label for="proxy-user">Usuário</label>
+              <input type="text" id="proxy-user" class="form-input" placeholder="usuário do proxy" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="proxy-pass">Senha</label>
+              <input type="password" id="proxy-pass" class="form-input" placeholder="senha do proxy" autocomplete="off" />
+            </div>
+          </div>
+          <p class="form-hint">
+            Para proxy autenticado, um forwarder local injeta as credenciais
+            automaticamente (não é necessário embuti-las na URL).
+          </p>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="create-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="create-confirm" class="btn btn-primary">Criar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Country Dialog -->
+    <div id="country-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">Trocar País da VPN</h2>
+        <div class="form-group">
+          <label for="change-country-select">Novo País</label>
+          <select id="change-country-select" class="form-select">
+            <option value="Albania">Albania</option>
+            <option value="Algeria">Algeria</option>
+            <option value="Andorra">Andorra</option>
+            <option value="Argentina">Argentina</option>
+            <option value="Armenia">Armenia</option>
+            <option value="Australia">Australia</option>
+            <option value="Austria">Austria</option>
+            <option value="Azerbaijan">Azerbaijan</option>
+            <option value="Bahamas">Bahamas</option>
+            <option value="Bangladesh">Bangladesh</option>
+            <option value="Belgium">Belgium</option>
+            <option value="Belize">Belize</option>
+            <option value="Bhutan">Bhutan</option>
+            <option value="Bolivia">Bolivia</option>
+            <option value="Bosnia and Herzegovina">Bosnia and Herzegovina</option>
+            <option value="Brazil">Brazil</option>
+            <option value="Brunei">Brunei</option>
+            <option value="Bulgaria">Bulgaria</option>
+            <option value="Cambodia">Cambodia</option>
+            <option value="Canada">Canada</option>
+            <option value="Chile">Chile</option>
+            <option value="Colombia">Colombia</option>
+            <option value="Costa Rica">Costa Rica</option>
+            <option value="Croatia">Croatia</option>
+            <option value="Cyprus">Cyprus</option>
+            <option value="Czech Republic">Czech Republic</option>
+            <option value="Denmark">Denmark</option>
+            <option value="Ecuador">Ecuador</option>
+            <option value="Egypt">Egypt</option>
+            <option value="Estonia">Estonia</option>
+            <option value="Finland">Finland</option>
+            <option value="France">France</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Germany">Germany</option>
+            <option value="Ghana">Ghana</option>
+            <option value="Greece">Greece</option>
+            <option value="Greenland">Greenland</option>
+            <option value="Hong Kong">Hong Kong</option>
+            <option value="Hungary">Hungary</option>
+            <option value="Iceland">Iceland</option>
+            <option value="India">India</option>
+            <option value="Indonesia">Indonesia</option>
+            <option value="Ireland">Ireland</option>
+            <option value="Israel">Israel</option>
+            <option value="Italy">Italy</option>
+            <option value="Japan">Japan</option>
+            <option value="Kazakhstan">Kazakhstan</option>
+            <option value="Laos">Laos</option>
+            <option value="Latvia">Latvia</option>
+            <option value="Liechtenstein">Liechtenstein</option>
+            <option value="Lithuania">Lithuania</option>
+            <option value="Luxembourg">Luxembourg</option>
+            <option value="Macau">Macau</option>
+            <option value="Malaysia">Malaysia</option>
+            <option value="Malta">Malta</option>
+            <option value="Mexico">Mexico</option>
+            <option value="Moldova">Moldova</option>
+            <option value="Monaco">Monaco</option>
+            <option value="Mongolia">Mongolia</option>
+            <option value="Montenegro">Montenegro</option>
+            <option value="Myanmar">Myanmar</option>
+            <option value="Nepal">Nepal</option>
+            <option value="Netherlands">Netherlands</option>
+            <option value="New Zealand">New Zealand</option>
+            <option value="Nigeria">Nigeria</option>
+            <option value="North Macedonia">North Macedonia</option>
+            <option value="Norway">Norway</option>
+            <option value="Pakistan">Pakistan</option>
+            <option value="Panama">Panama</option>
+            <option value="Paraguay">Paraguay</option>
+            <option value="Peru">Peru</option>
+            <option value="Philippines">Philippines</option>
+            <option value="Poland">Poland</option>
+            <option value="Portugal">Portugal</option>
+            <option value="Puerto Rico">Puerto Rico</option>
+            <option value="Romania">Romania</option>
+            <option value="Saudi Arabia">Saudi Arabia</option>
+            <option value="Serbia">Serbia</option>
+            <option value="Singapore">Singapore</option>
+            <option value="Slovakia">Slovakia</option>
+            <option value="Slovenia">Slovenia</option>
+            <option value="South Africa">South Africa</option>
+            <option value="South Korea">South Korea</option>
+            <option value="Spain">Spain</option>
+            <option value="Sri Lanka">Sri Lanka</option>
+            <option value="Sweden">Sweden</option>
+            <option value="Switzerland">Switzerland</option>
+            <option value="Taiwan">Taiwan</option>
+            <option value="Thailand">Thailand</option>
+            <option value="Turkey">Turkey</option>
+            <option value="Ukraine">Ukraine</option>
+            <option value="United Arab Emirates">United Arab Emirates</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="United States">United States</option>
+            <option value="Uruguay">Uruguay</option>
+            <option value="Uzbekistan">Uzbekistan</option>
+            <option value="Venezuela">Venezuela</option>
+            <option value="Vietnam">Vietnam</option>
+          </select>
+        </div>
+        <div class="dialog-actions">
+          <button id="country-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="country-confirm" class="btn btn-primary">Trocar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VPN Credentials Dialog -->
+    <div id="vpn-creds-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">🔑 Credenciais VPN</h2>
+        <p class="form-hint">Salve as credenciais OpenVPN de cada provedor. A senha nunca é exibida de volta.</p>
+        <div id="vpn-creds-list"></div>
+        <div class="dialog-actions">
+          <button id="vpn-creds-cancel" class="btn btn-secondary">Fechar</button>
+          <button id="vpn-creds-save" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/instances.js"></script>
+  <script src="/js/vpn-creds.js"></script>
+  <script src="/js/polling.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

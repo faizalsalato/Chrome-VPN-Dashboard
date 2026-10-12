@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Cloak Fingerprint",
+  "version": "1.0.0",
+  "description": "Per-profile fingerprint overrides injected at document_start by the dashboard.",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "permissions": []
+}
