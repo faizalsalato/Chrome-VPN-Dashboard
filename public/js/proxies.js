@@ -9,16 +9,35 @@ const ProxiesLib = {
   _editingId: null,
 
   open() {
-    const dialog = document.getElementById('proxies-dialog');
-    dialog.classList.remove('hidden');
-    this._resetForm();
-    this._bindButtons();
-    this.refresh();
+    // Página dedicada: navega para a view de proxies
+    if (typeof App !== 'undefined' && App.switchView) {
+      App.switchView('proxies');
+    } else {
+      const v = document.getElementById('view-proxies');
+      if (v) v.classList.remove('hidden');
+      this.activate();
+    }
   },
 
   close() {
-    document.getElementById('proxies-dialog').classList.add('hidden');
+    // Volta para a view de instâncias
+    if (typeof App !== 'undefined' && App.switchView) {
+      App.switchView('instances');
+    } else {
+      const v = document.getElementById('view-proxies');
+      if (v) v.classList.add('hidden');
+    }
     this._resetForm();
+  },
+
+  /**
+   * Inicializa o conteúdo da página (formulário + botões + lista).
+   * Chamado por App.switchView('proxies').
+   */
+  activate() {
+    this._resetForm();
+    this._bindButtons();
+    this.refresh();
   },
 
   _bindButtons() {

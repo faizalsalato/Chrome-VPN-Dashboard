@@ -16,17 +16,14 @@ const App = {
       createBtn.addEventListener('click', () => this.handleCreate());
     }
 
-    // Set up VPN credentials button
+    // Set up VPN credentials button (na sidebar)
     const vpnCredsBtn = document.getElementById('vpn-creds-btn');
     if (vpnCredsBtn) {
       vpnCredsBtn.addEventListener('click', () => VpnCreds.open());
     }
 
-    // Set up Proxies library button
-    const proxiesBtn = document.getElementById('proxies-btn');
-    if (proxiesBtn) {
-      proxiesBtn.addEventListener('click', () => ProxiesLib.open());
-    }
+    // Set up sidebar navigation (troca de views: Instâncias / Proxies)
+    this.initNav();
 
     // Set up dialog
     this.initDialog();
@@ -42,6 +39,40 @@ const App = {
         Polling.start();
       }
     });
+  },
+
+  /**
+   * Liga os itens da sidebar que trocam de view (data-view).
+   */
+  initNav() {
+    document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => this.switchView(btn.dataset.view));
+    });
+  },
+
+  /**
+   * Alterna entre as views: 'instances' (main) e 'proxies' (página dedicada).
+   */
+  switchView(name) {
+    const isProxies = name === 'proxies';
+    const main = document.querySelector('.main-content');
+    const proxies = document.getElementById('view-proxies');
+
+    if (main) main.classList.toggle('hidden', isProxies);
+    if (proxies) proxies.classList.toggle('hidden', !isProxies);
+
+    // Atualiza o item ativo da sidebar
+    document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === name);
+    });
+
+    // Ao entrar em Proxies, inicializa a página (formulário + lista)
+    if (isProxies && typeof ProxiesLib !== 'undefined' && ProxiesLib.activate) {
+      ProxiesLib.activate();
+    }
+
+    // Volta ao topo ao trocar de view
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
   handleCreate() {

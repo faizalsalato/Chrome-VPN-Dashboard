@@ -22,8 +22,39 @@
   </script>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
-<body>
+<body class="has-sidebar">
   <div id="app">
+    <!-- Sidebar (menu lateral) -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">🖥️</span>
+        <span class="brand-text">RotaProxy</span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Menu principal">
+        <button class="nav-item active" data-view="instances" type="button">
+          <span class="nav-icon">🖥️</span>
+          <span class="nav-label">Instâncias</span>
+        </button>
+        <button class="nav-item" data-view="proxies" type="button">
+          <span class="nav-icon">🔌</span>
+          <span class="nav-label">Proxies</span>
+        </button>
+        <button class="nav-item" id="vpn-creds-btn" type="button">
+          <span class="nav-icon">🔑</span>
+          <span class="nav-label">Credenciais VPN</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="create-btn" class="btn btn-primary sidebar-create">
+          <span class="btn-plus">+</span>
+          <span class="btn-text">Nova Instância</span>
+          <span class="btn-loading hidden">
+            <span class="spinner"></span> Criando...
+          </span>
+        </button>
+      </div>
+    </aside>
+
     <!-- Header -->
     <header class="header">
       <div class="header-content">
@@ -45,20 +76,10 @@
 
     <!-- Main Content -->
     <main class="main-content">
+      <section id="view-instances" class="view">
       <!-- Actions Bar -->
       <div class="actions-bar">
-        <button id="create-btn" class="btn btn-primary">
-          <span class="btn-text">+ Nova Instância</span>
-          <span class="btn-loading hidden">
-            <span class="spinner"></span> Criando...
-          </span>
-        </button>
-        <button id="vpn-creds-btn" class="btn btn-secondary">
-          <span class="btn-text">🔑 Credenciais VPN</span>
-        </button>
-        <button id="proxies-btn" class="btn btn-secondary">
-          <span class="btn-text">🔌 Proxies</span>
-        </button>
+        <div class="view-title"><h2>🖥️ Instâncias</h2></div>
         <span id="instance-count" class="instance-count"></span>
       </div>
 
@@ -77,6 +98,7 @@
 
       <!-- Instance Grid -->
       <div id="instance-grid" class="instance-grid hidden"></div>
+    </section>
     </main>
 
     <!-- Confirmation Dialog -->
@@ -407,11 +429,15 @@
       </div>
     </div>
 
-    <!-- Proxies Dialog -->
-    <div id="proxies-dialog" class="dialog-overlay hidden">
-      <div class="dialog" role="dialog" aria-modal="true">
-        <h2 class="dialog-title">🔌 Biblioteca de Proxies</h2>
-        <p class="form-hint">Cadastre proxies reutilizáveis. A senha nunca é exibida de volta.</p>
+    <!-- Proxies View (pagina dedicada) -->
+    <section id="view-proxies" class="view hidden">
+      <div class="view-header">
+        <div class="view-title">
+          <h2>🔌 Biblioteca de Proxies</h2>
+          <p class="form-hint">Cadastre proxies reutilizáveis. A senha nunca é exibida de volta.</p>
+        </div>
+      </div>
+      <div class="view-panel">
 
         <div id="proxies-list"></div>
 
@@ -481,13 +507,13 @@
 
         <div class="dialog-actions">
           <button id="proxies-test" class="btn btn-secondary">🧪 Testar</button>
-          <button id="proxies-cancel" class="btn btn-secondary">Fechar</button>
+          <button id="proxies-cancel" class="btn btn-secondary">← Instâncias</button>
           <button id="proxies-cancel-edit" class="btn btn-secondary hidden">Cancelar edição</button>
           <button id="proxies-delete" class="btn btn-danger hidden">Remover</button>
           <button id="proxies-save" class="btn btn-primary">Salvar</button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
