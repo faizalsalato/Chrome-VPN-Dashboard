@@ -7,6 +7,9 @@ const App = {
     const isAuth = await Auth.checkAuth();
     if (!isAuth) return;
 
+    // Theme toggle (light/dark) with persistence
+    this.initTheme();
+
     // Set up create button
     const createBtn = document.getElementById('create-btn');
     if (createBtn) {
@@ -76,6 +79,41 @@ const App = {
         newConfirm.disabled = false;
       }
     });
+  },
+
+  /**
+   * Inicializa o tema: reflete o tema atual no ícone do botão e liga o toggle.
+   * O tema já foi aplicado no <head> (anti-flash); aqui só sincronizamos a UI.
+   */
+  initTheme() {
+    const btn = document.getElementById('theme-toggle');
+    this._syncThemeIcon();
+    if (btn && !btn.dataset.bound) {
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => this.toggleTheme());
+    }
+  },
+
+  /** Alterna entre 'dark' e 'light', persiste e atualiza o ícone. */
+  toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch (e) {
+      // localStorage indisponível (modo privado) - tema vale só nesta sessão
+    }
+    this._syncThemeIcon();
+  },
+
+  /** Atualiza o ícone do botão conforme o tema ativo (☀️ no claro, 🌙 no escuro). */
+  _syncThemeIcon() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    btn.textContent = isLight ? '☀️' : '🌙';
+    btn.title = isLight ? 'Mudar para tema escuro' : 'Mudar para tema claro';
   },
 
   /** Restaura o formulário de criação para o estado padrão (VPN). */

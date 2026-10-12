@@ -9,6 +9,8 @@ const proxyInjector = require('./services/proxy-injector.service');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
+// Atrás do nginx (reverse proxy): confia no loopback para X-Forwarded-For/req.ip.
+app.set('trust proxy', 'loopback');
 
 // Middleware
 app.use(cors());

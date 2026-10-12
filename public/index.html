@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - Chrome/VPN Manager</title>
+  <script>
+    // Aplica o tema salvo antes do primeiro paint (evita "flash" de tema errado)
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t !== 'light' && t !== 'dark') t = 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
@@ -13,6 +25,8 @@
       <div class="header-content">
         <h1 class="header-title">🖥️ Chrome/VPN Dashboard</h1>
         <div class="header-actions">
+          <button id="theme-toggle" class="btn btn-secondary btn-sm" type="button"
+                  title="Alternar tema claro/escuro" aria-label="Alternar tema">🌙</button>
           <span id="user-info" class="user-info"></span>
           <button id="logout-btn" class="btn btn-secondary btn-sm">Sair</button>
         </div>
