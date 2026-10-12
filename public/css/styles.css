@@ -514,6 +514,112 @@ a:hover {
   border-color: #00b2ff;
 }
 
+/* Ações por proxy salvo (botão Testar) */
+.proxy-row-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Painel de resultado do teste de proxy */
+.proxy-test-result {
+  margin: 0.75rem 0;
+}
+
+.proxy-test-card {
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  background-color: var(--bg-primary);
+}
+
+.proxy-test-card.live {
+  border-color: #2ed8b6;
+}
+
+.proxy-test-card.dead {
+  border-color: #ff5370;
+}
+
+.proxy-test-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.proxy-test-status {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.03em;
+}
+
+.proxy-test-status.ok { color: #2ed8b6; }
+.proxy-test-status.bad { color: #ff5370; }
+
+.proxy-test-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.proxy-test-latency {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
+}
+
+.proxy-test-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 1rem;
+}
+
+.proxy-test-grid .info-row {
+  font-size: 0.8125rem;
+}
+
+.proxy-test-error {
+  font-size: 0.8125rem;
+  color: #ff5370;
+  margin: 0;
+}
+
+/* Bandeira do país a partir do countryCode (flagcdn) */
+.proxy-flag {
+  display: inline-block;
+  width: 1.25em;
+  height: 0.9em;
+  margin-right: 0.35em;
+  vertical-align: -0.1em;
+  border-radius: 2px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.proxy-flag.br { background-image: url('https://flagcdn.com/w40/br.png'); }
+.proxy-flag.us { background-image: url('https://flagcdn.com/w40/us.png'); }
+.proxy-flag.de { background-image: url('https://flagcdn.com/w40/de.png'); }
+.proxy-flag.fr { background-image: url('https://flagcdn.com/w40/fr.png'); }
+.proxy-flag.gb { background-image: url('https://flagcdn.com/w40/gb.png'); }
+.proxy-flag.es { background-image: url('https://flagcdn.com/w40/es.png'); }
+.proxy-flag.it { background-image: url('https://flagcdn.com/w40/it.png'); }
+.proxy-flag.nl { background-image: url('https://flagcdn.com/w40/nl.png'); }
+.proxy-flag.ca { background-image: url('https://flagcdn.com/w40/ca.png'); }
+.proxy-flag.ar { background-image: url('https://flagcdn.com/w40/ar.png'); }
+.proxy-flag.mx { background-image: url('https://flagcdn.com/w40/mx.png'); }
+.proxy-flag.jp { background-image: url('https://flagcdn.com/w40/jp.png'); }
+.proxy-flag.cn { background-image: url('https://flagcdn.com/w40/cn.png'); }
+.proxy-flag.in { background-image: url('https://flagcdn.com/w40/in.png'); }
+.proxy-flag.ru { background-image: url('https://flagcdn.com/w40/ru.png'); }
+.proxy-flag.au { background-image: url('https://flagcdn.com/w40/au.png'); }
+
 /* Proxy Info (mesmo layout do VPN Info) */
 .proxy-info {
   background-color: var(--bg-primary);

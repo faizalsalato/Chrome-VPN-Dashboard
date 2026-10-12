@@ -114,6 +114,34 @@ Cada instância VPN usa um dos provedores suportados pelo Gluetun (OpenVPN):
 - Na criação: seletor **"Provedor VPN"** (Surfshark/ExpressVPN); o card exibe o badge 🦈 Surfshark / 🛡️ ExpressVPN.
 - A **troca de país** preserva provedor, navegador e fingerprint.
 
+## Biblioteca de Proxies (🔌)
+
+O menu **"Proxies"** (botão 🔌 na barra de ações) é uma biblioteca de proxies reutilizáveis, igual ao menu de Credenciais VPN:
+
+- **Cadastrar/editar/remover** proxies (nome, host, porta, esquema HTTP/SOCKS, usuário/senha). A senha é **mascarada** (nunca retornada na listagem — só `hasPassword`).
+- **Escolher na criação**: ao criar uma instância do tipo Proxy, o campo **"Proxy salvo"** lista os proxies cadastrados e **preenche automaticamente** host/porta/usuário/senha (inclusive o modo autenticado).
+- **API**: `GET/POST/PUT/DELETE /api/proxies` e `GET /api/proxies/:id/full` (com senha, uso interno na criação).
+
+### 🧪 Testar proxy (live/morto + geolocalização)
+
+Cada proxy tem um botão **"🧪 Testar"** (na lista e no formulário de cadastro) que faz uma **requisição real através do proxy** e retorna:
+
+| Campo | Descrição |
+|---|---|
+| **Status** | ● LIVE (verde) ou ● MORTO (vermelho) |
+| **Latência** | tempo de resposta em ms |
+| **IP** | IP de saída (exit node) |
+| **País / Bandeira** | país + bandeira (via `countryCode`) |
+| **Região / Cidade / CEP** | subdivisão do IP |
+| **Coordenadas** | latitude / longitude |
+| **Fuso horário** | timezone do IP |
+| **ISP / Org / AS** | operadora e ASN |
+| **Erro** | motivo quando MORTO (ex.: `ECONNREFUSED`, timeout, auth 407) |
+
+- **API de teste**: `POST /api/proxies/test` (proxy informado no corpo) e `POST /api/proxies/:id/test` (proxy já salvo, busca credenciais no banco).
+- A geolocalização usa **ip-api.com** com **retry automático** em caso de rate-limit (limite do plano gratuito).
+
+
 ## Perfis e Fingerprint (antidetect, estilo GoLogin)
 
 Cada instância funciona como um **perfil de navegador** com identidade própria:
