@@ -56,6 +56,9 @@
         <button id="vpn-creds-btn" class="btn btn-secondary">
           <span class="btn-text">🔑 Credenciais VPN</span>
         </button>
+        <button id="proxies-btn" class="btn btn-secondary">
+          <span class="btn-text">🔌 Proxies</span>
+        </button>
         <span id="instance-count" class="instance-count"></span>
       </div>
 
@@ -223,6 +226,16 @@
         </div>
 
         <div id="proxy-fields" class="hidden">
+          <div class="form-group">
+            <label for="proxy-saved">Proxy salvo</label>
+            <select id="proxy-saved" class="form-select">
+              <option value="">— Informar manualmente —</option>
+            </select>
+            <p class="form-hint">
+              Escolha um proxy da biblioteca (menu "🔌 Proxies") para preencher automaticamente,
+              ou informe manualmente abaixo.
+            </p>
+          </div>
           <div class="form-group">
             <label for="proxy-host">Host do Proxy</label>
             <input type="text" id="proxy-host" class="form-input" placeholder="ex: brd.superproxy.io" autocomplete="off" />
@@ -394,6 +407,62 @@
       </div>
     </div>
 
+    <!-- Proxies Dialog -->
+    <div id="proxies-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">🔌 Biblioteca de Proxies</h2>
+        <p class="form-hint">Cadastre proxies reutilizáveis. A senha nunca é exibida de volta.</p>
+
+        <div id="proxies-list"></div>
+
+        <hr style="border-color: var(--border); margin: 1rem 0;" />
+
+        <h3 id="proxies-form-title" class="dialog-title" style="font-size: 1rem;">Adicionar proxy</h3>
+        <div class="form-group">
+          <label for="proxy-name">Nome</label>
+          <input type="text" id="proxy-name" class="form-input" placeholder="ex: Bright Data 239" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="proxy-lib-host">Host</label>
+          <input type="text" id="proxy-lib-host" class="form-input" placeholder="ex: brd.superproxy.io" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="proxy-lib-port">Porta</label>
+          <input type="number" id="proxy-lib-port" class="form-input" placeholder="ex: 44445" min="1" max="65535" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="proxy-lib-scheme">Esquema</label>
+          <select id="proxy-lib-scheme" class="form-select">
+            <option value="http" selected>HTTP</option>
+            <option value="https">HTTPS</option>
+          </select>
+        </div>
+        <div class="form-group form-checkbox">
+          <label for="proxy-lib-auth">
+            <input type="checkbox" id="proxy-lib-auth" />
+            <span>Requer autenticação (usuário e senha)</span>
+          </label>
+        </div>
+        <div id="proxy-lib-credentials" class="hidden">
+          <div class="form-group">
+            <label for="proxy-lib-user">Usuário</label>
+            <input type="text" id="proxy-lib-user" class="form-input" placeholder="usuário do proxy" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="proxy-lib-pass">Senha</label>
+            <input type="password" id="proxy-lib-pass" class="form-input" placeholder="(em branco = manter atual)" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="proxies-cancel" class="btn btn-secondary">Fechar</button>
+          <button id="proxies-cancel-edit" class="btn btn-secondary hidden">Cancelar edição</button>
+          <button id="proxies-delete" class="btn btn-danger hidden">Remover</button>
+          <button id="proxies-save" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </div>
@@ -402,6 +471,7 @@
   <script src="/js/auth.js"></script>
   <script src="/js/instances.js"></script>
   <script src="/js/vpn-creds.js"></script>
+  <script src="/js/proxies.js"></script>
   <script src="/js/polling.js"></script>
   <script src="/js/app.js"></script>
 </body>

@@ -54,6 +54,19 @@ function initDatabase() {
       password TEXT NOT NULL,
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS proxies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      scheme TEXT DEFAULT 'http',
+      auth INTEGER DEFAULT 0,
+      username TEXT,
+      password TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: adiciona colunas de proxy em instâncias já existentes

@@ -5,6 +5,7 @@ const { initDatabase } = require('./database');
 const authRouter = require('./routes/auth.router');
 const instancesRouter = require('./routes/instances.router');
 const vpnRouter = require('./routes/vpn.router');
+const proxiesRouter = require('./routes/proxies.router');
 const proxyInjector = require('./services/proxy-injector.service');
 
 const app = express();
@@ -21,6 +22,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/api/auth', authRouter);
 app.use('/api/instances', instancesRouter);
 app.use('/api/vpn-credentials', vpnRouter);
+app.use('/api/proxies', proxiesRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

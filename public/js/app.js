@@ -22,6 +22,12 @@ const App = {
       vpnCredsBtn.addEventListener('click', () => VpnCreds.open());
     }
 
+    // Set up Proxies library button
+    const proxiesBtn = document.getElementById('proxies-btn');
+    if (proxiesBtn) {
+      proxiesBtn.addEventListener('click', () => ProxiesLib.open());
+    }
+
     // Set up dialog
     this.initDialog();
 
@@ -131,6 +137,9 @@ const App = {
     const authCb = document.getElementById('proxy-auth');
     if (authCb) authCb.checked = false;
 
+    // Recarrega a biblioteca de proxies no seletor "Proxy salvo"
+    ProxiesLib.fillCreateSelect();
+
     this._applyCreateTypeVisibility('vpn');
   },
 
@@ -149,6 +158,12 @@ const App = {
         const creds = document.getElementById('proxy-credentials');
         if (creds) creds.classList.toggle('hidden', !authCb.checked);
       });
+    }
+
+    const savedSel = document.getElementById('proxy-saved');
+    if (savedSel && !savedSel.dataset.bound) {
+      savedSel.dataset.bound = '1';
+      savedSel.addEventListener('change', () => ProxiesLib.applySavedToCreate(savedSel.value));
     }
   },
 
