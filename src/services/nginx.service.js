@@ -35,8 +35,22 @@ server {
   }
 
   async addServerBlock(instance) {
-    const configContent = this.generateServerBlock(instance);
     const subdomain = `chrome${instance.id}.${DOMAIN}`;
+
+    // Se o nginx estiver desabilitado via env, apenas ignora (modo local).
+    if (!this._isEnabled()) {
+      console.log(`[${new Date().toISOString()}] [INFO] [nginx] NGINX_ENABLED=false — server block ignorado para ${subdomain}`);
+      return;
+    }
+
+    // Se o nginx não estiver ativo, não tenta configurar/recarregar: a
+    // instância continua acessível diretamente pela porta (modo local).
+    if (!this._isActive()) {
+      console.warn(`[${new Date().toISOString()}] [WARN] [nginx] Nginx inativo — server block ignorado para ${subdomain} (acesso pela porta direta)`);
+      return;
+    }
+
+    const configContent = this.generateServerBlock(instance);
     const filePath = path.join(NGINX_SITES_PATH, `chrome${instance.id}`);
     const enabledPath = path.join(NGINX_ENABLED_PATH, `chrome${instance.id}`);
 
@@ -86,23 +100,40 @@ server {
       fs.unlinkSync(filePath);
     }
 
-    // Reload nginx
-    try {
-      this._testConfig();
-      this._reload();
-    } catch (err) {
-      console.warn(`[WARN] [nginx] Erro ao recarregar:`, err.message);
-    }
+    // Reload nginx (apenas se ativo; senão só limpa os arquivos)
+    if (this._isEnabled() && this._isActive()) {
+      try {
+        this._testConfig();
+        this._reload();
+      } catch (err) {
+        console.warn(`[WARN] [nginx] Erro ao recarregar:`, err.message);
+      }
 
-    // Revoke/delete certificate
-    try {
-      execSync(`certbot delete --cert-name ${subdomain} --non-interactive`, { timeout: 15000, stdio: 'pipe' });
-      console.log(`[${new Date().toISOString()}] [INFO] [nginx] Certificado removido para ${subdomain}`);
-    } catch (err) {
-      console.warn(`[WARN] [nginx] Certbot delete falhou:`, err.message);
+      // Revoke/delete certificate
+      try {
+        execSync(`certbot delete --cert-name ${subdomain} --non-interactive`, { timeout: 15000, stdio: 'pipe' });
+        console.log(`[${new Date().toISOString()}] [INFO] [nginx] Certificado removido para ${subdomain}`);
+      } catch (err) {
+        console.warn(`[WARN] [nginx] Certbot delete falhou:`, err.message);
+      }
     }
 
     console.log(`[${new Date().toISOString()}] [INFO] [nginx] Server block removido para ${subdomain}`);
+  }
+
+  /** Habilita/desabilita o gerenciamento do nginx (NGINX_ENABLED=false => modo local). */
+  _isEnabled() {
+    return String(process.env.NGINX_ENABLED || 'true').toLowerCase() !== 'false';
+  }
+
+  /** Verifica se o serviço nginx está ativo (para pular reload/certbot quando parado). */
+  _isActive() {
+    try {
+      execSync('systemctl is-active --quiet nginx', { timeout: 4000, stdio: 'pipe' });
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   _testConfig() {
