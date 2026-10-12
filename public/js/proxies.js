@@ -28,6 +28,8 @@ const ProxiesLib = {
     const cancelEdit = document.getElementById('proxies-cancel-edit');
     const authCb = document.getElementById('proxy-lib-auth');
     const test = document.getElementById('proxies-test');
+    const bulkImport = document.getElementById('proxies-bulk-import');
+    const bulkClear = document.getElementById('proxies-bulk-clear');
 
     // Clone para remover listeners antigos (mesmo padrão dos outros dialogs)
     const newClose = close.cloneNode(true); close.parentNode.replaceChild(newClose, close);
@@ -36,6 +38,8 @@ const ProxiesLib = {
     const newCancelEdit = cancelEdit.cloneNode(true); cancelEdit.parentNode.replaceChild(newCancelEdit, cancelEdit);
     const newAuth = authCb.cloneNode(true); authCb.parentNode.replaceChild(newAuth, authCb);
     const newTest = test.cloneNode(true); test.parentNode.replaceChild(newTest, test);
+    const newBulkImport = bulkImport.cloneNode(true); bulkImport.parentNode.replaceChild(newBulkImport, bulkImport);
+    const newBulkClear = bulkClear.cloneNode(true); bulkClear.parentNode.replaceChild(newBulkClear, bulkClear);
 
     newClose.addEventListener('click', () => this.close());
     newSave.addEventListener('click', () => this.save());
@@ -46,6 +50,8 @@ const ProxiesLib = {
         .classList.toggle('hidden', !newAuth.checked);
     });
     newTest.addEventListener('click', () => this._testForm());
+    newBulkImport.addEventListener('click', () => this._bulkImport());
+    newBulkClear.addEventListener('click', () => this._bulkClear());
   },
 
   _resetForm() {
@@ -325,6 +331,66 @@ const ProxiesLib = {
           <p class="proxy-test-error">${this._esc(r.error || 'Proxy indisponível')}${r.code ? ` (${this._esc(r.code)})` : ''}</p>
         </div>`;
     }
+  },
+
+  /**
+   * Importa a lista do textarea via POST /proxies/bulk.
+   * O backend faz o parse (parseProxyList) e o bulkImport (com dedupe).
+   */
+  async _bulkImport() {
+    const ta = document.getElementById('proxy-bulk-list');
+    const list = (ta.value || '').trim();
+    if (!list) {
+      App.showToast('Cole uma lista de proxies para importar', 'error');
+      return;
+    }
+    const btn = document.getElementById('proxies-bulk-import');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    const result = document.getElementById('proxy-bulk-result');
+    result.classList.remove('hidden');
+    result.innerHTML = '<p class="form-hint">🔄 Importando…</p>';
+    try {
+      const r = await API.post('/proxies/bulk', { list });
+      this._renderBulkResult(r);
+      await this.refresh();
+      this.fillCreateSelect();
+    } catch (err) {
+      result.innerHTML = `<div class="proxy-test-card dead">
+        <p class="proxy-test-error">Erro ao importar: ${this._esc(err.message || 'falha')}</p>
+      </div>`;
+    } finally {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  },
+
+  _bulkClear() {
+    const ta = document.getElementById('proxy-bulk-list');
+    if (ta) ta.value = '';
+    const result = document.getElementById('proxy-bulk-result');
+    result.classList.add('hidden');
+    result.innerHTML = '';
+  },
+
+  _renderBulkResult(r) {
+    const el = document.getElementById('proxy-bulk-result');
+    el.classList.remove('hidden');
+    const total = r.total != null ? r.total : (r.imported + r.skipped);
+    el.innerHTML = `
+      <div class="proxy-test-card ${r.imported > 0 ? 'live' : 'dead'}">
+        <div class="proxy-test-head">
+          <span class="proxy-test-status ${r.imported > 0 ? 'ok' : 'bad'}">
+            ${r.imported > 0 ? '✓ IMPORTADO' : '○ NADA NOVO'}
+          </span>
+          <span class="proxy-test-label">${this._esc(r.message || '')}</span>
+        </div>
+        <div class="proxy-test-grid">
+          <div class="info-row"><span class="info-label">Total na lista</span><span class="info-value">${total}</span></div>
+          <div class="info-row"><span class="info-label">Importados</span><span class="info-value">${r.imported}</span></div>
+          <div class="info-row"><span class="info-label">Ignorados (duplicados/inválidos)</span><span class="info-value">${r.skipped}</span></div>
+        </div>
+      </div>`;
   },
 
   _esc(s) {

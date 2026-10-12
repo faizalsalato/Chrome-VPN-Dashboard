@@ -120,7 +120,8 @@ O menu **"Proxies"** (botão 🔌 na barra de ações) é uma biblioteca de prox
 
 - **Cadastrar/editar/remover** proxies (nome, host, porta, esquema HTTP/SOCKS, usuário/senha). A senha é **mascarada** (nunca retornada na listagem — só `hasPassword`).
 - **Escolher na criação**: ao criar uma instância do tipo Proxy, o campo **"Proxy salvo"** lista os proxies cadastrados e **preenche automaticamente** host/porta/usuário/senha (inclusive o modo autenticado).
-- **API**: `GET/POST/PUT/DELETE /api/proxies` e `GET /api/proxies/:id/full` (com senha, uso interno na criação).
+- **Importar em lote**: cole uma lista (um proxy por linha) no textarea e clique em **"Importar Lista"**. Formatos aceitos: `host:porta:user:pass` (Bright Data), `host:porta`, `user:pass@host:porta` e `http(s)://host:porta`. Linhas em branco e com `#` são ignoradas. **Duplicados** (mesmo host:porta:usuário) são ignorados automaticamente. O nome é gerado a partir de `user@host:porta`.
+- **API**: `GET/POST/PUT/DELETE /api/proxies`, `GET /api/proxies/:id/full` (com senha, uso interno na criação) e `POST /api/proxies/bulk` (importação em lote; body `{ list: "..." }` ou `{ items: [...] }`).
 
 ### 🧪 Testar proxy (live/morto + geolocalização)
 

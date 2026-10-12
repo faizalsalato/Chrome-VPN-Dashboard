@@ -419,6 +419,29 @@
 
         <hr style="border-color: var(--border); margin: 1rem 0;" />
 
+        <h3 class="dialog-title" style="font-size: 1rem;">📥 Importar lista de proxies</h3>
+        <p class="form-hint">
+          Cole uma lista (um por linha). Formatos aceitos:
+          <code>host:porta:usuario:senha</code>,
+          <code>usuario:senha@host:porta</code> ou
+          <code>host:porta</code>. Linhas com <code>#</code> são ignoradas.
+        </p>
+        <div class="form-group">
+          <textarea id="proxy-bulk-list" class="form-input" rows="6"
+            placeholder="brd.superproxy.io:44445:brd-customer-hl_97108020-zone-isp_proxy1-ip-185.96.133.239:jafib267th01&#10;brd.superproxy.io:44445:brd-customer-hl_97108020-zone-isp_proxy1-ip-185.96.133.245:jafib267th01&#10;usuario:senha@host.com:8080&#10;192.168.0.10:3128"
+            style="font-family: monospace; resize: vertical;"></textarea>
+        </div>
+        <div class="dialog-actions" style="justify-content: flex-start;">
+          <button id="proxies-bulk-import" class="btn btn-primary">
+            <span class="btn-text">📥 Importar</span>
+            <span class="btn-loading"><span class="spinner"></span></span>
+          </button>
+          <button id="proxies-bulk-clear" class="btn btn-secondary">Limpar</button>
+        </div>
+        <div id="proxy-bulk-result" class="proxy-test-result hidden"></div>
+
+        <hr style="border-color: var(--border); margin: 1rem 0;" />
+
         <h3 id="proxies-form-title" class="dialog-title" style="font-size: 1rem;">Adicionar proxy</h3>
         <div class="form-group">
           <label for="proxy-name">Nome</label>
