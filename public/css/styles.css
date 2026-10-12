@@ -1,48 +1,50 @@
 /* ============================================
-   Dashboard Chrome/VPN - Dark Theme
+   Dashboard Chrome/VPN - Tema baseado em rubilax.online
+   (template Able Pro Bootstrap: Open Sans + Quicksand)
    ============================================ */
 
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-card: #0f3460;
-  --bg-input: #1a1a3e;
-  --text-primary: #e8e8e8;
-  --text-secondary: #a8a8b8;
-  --text-muted: #6c6c7c;
-  --accent: #4fc3f7;
-  --accent-hover: #29b6f6;
-  --success: #4caf50;
-  --danger: #f44336;
-  --warning: #ff9800;
-  --border: #2a2a4e;
-  --shadow: rgba(0, 0, 0, 0.3);
-  --accent-contrast: #04121f; /* texto sobre --accent no tema escuro */
-  --spinner-track: rgba(255, 255, 255, 0.3); /* trilha do spinner no tema escuro */
-  --radius: 8px;
-  --radius-lg: 12px;
+  /* Tema ESCURO (alternativa do toggle), harmonizado com os tons
+     escuros do proprio rubilax.online (sidebar #263544 / card #2f4254). */
+  --bg-primary: #1c262f;
+  --bg-secondary: #263544;
+  --bg-card: #2f4254;
+  --bg-input: #2f4254;
+  --text-primary: #eaeef2;
+  --text-secondary: #b4c0cc;
+  --text-muted: #8a99a8;
+  --accent: #4099ff;
+  --accent-hover: #5fa8ff;
+  --success: #2ed8b6;
+  --danger: #ff5370;
+  --warning: #ffb64d;
+  --border: #384f65;
+  --shadow: rgba(0, 0, 0, 0.2);
+  --accent-contrast: #0f1c26;      /* texto sobre --accent no tema escuro */
+  --spinner-track: rgba(255, 255, 255, 0.25); /* trilha do spinner */
+  --radius: 6px;
+  --radius-lg: 10px;
   --transition: 0.2s ease;
 }
 
-/* Tema Claro - sobrescreve as variáveis do :root (dark).
-   Todo o restante do CSS usa as variáveis, então basta trocá-las aqui. */
+/* Tema CLARO = paleta fiel de rubilax.online (tema principal). */
 [data-theme="light"] {
-  --bg-primary: #eef1f6;
-  --bg-secondary: #ffffff;
-  --bg-card: #ffffff;
+  --bg-primary: #f2f7fb;           /* fundo do body no rubilax */
+  --bg-secondary: #ffffff;          /* header / superficies */
+  --bg-card: #ffffff;               /* cards */
   --bg-input: #ffffff;
-  --text-primary: #1a1a2e;
-  --text-secondary: #4a4a5e;
-  --text-muted: #8a8a9a;
-  --accent: #0277bd;
-  --accent-hover: #01579b;
-  --success: #2e7d32;
-  --danger: #c62828;
-  --warning: #ef6c00;
-  --border: #d4d7e0;
-  --shadow: rgba(15, 23, 42, 0.12);
-  --accent-contrast: #ffffff; /* texto sobre --accent no tema claro */
-  --spinner-track: rgba(0, 0, 0, 0.15); /* trilha do spinner no tema claro */
+  --text-primary: #333333;          /* texto padrao do rubilax */
+  --text-secondary: #6c7a8c;
+  --text-muted: #a3b1c2;
+  --accent: #4099ff;                /* azul primario do rubilax */
+  --accent-hover: #2b8cff;
+  --success: #2ed8b6;
+  --danger: #ff5370;
+  --warning: #ffb64d;
+  --border: #e6edf5;
+  --shadow: rgba(43, 43, 43, 0.1);
+  --accent-contrast: #ffffff;       /* texto sobre --accent no tema claro */
+  --spinner-track: rgba(0, 0, 0, 0.12); /* trilha do spinner */
 }
 
 /* Botão de alternância de tema no header */
@@ -66,11 +68,18 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
+}
+
+/* Títulos usam Quicksand (como o header/navbar do rubilax.online) */
+h1, h2, h3, h4, h5, h6,
+.header-title, .dialog-title, .card-title {
+  font-family: 'Quicksand', 'Open Sans', sans-serif;
+  font-weight: 700;
 }
 
 /* ============================================
@@ -103,6 +112,8 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 100;
+  /* sombra suave do header do rubilax.online */
+  box-shadow: 0 2px 4px 0 rgba(43, 43, 43, 0.1);
 }
 
 .header-content {
@@ -180,7 +191,7 @@ a:hover {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: #d32f2f;
+  background-color: #e6455f;
 }
 
 .btn-success {
