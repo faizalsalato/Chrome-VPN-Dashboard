@@ -170,8 +170,9 @@ const Instances = {
           <div class="card-title">
             <span class="status-dot ${instance.status}"></span>
             ${titleHtml}
+            <span class="title-sep">|</span>
+            <span class="card-status ${instance.status}">${this.statusLabel(instance.status)}</span>
           </div>
-          <span class="card-status ${instance.status}">${this.statusLabel(instance.status)}</span>
         </div>
         <div class="card-body">
           ${connSection}${vpnSection}${fpSection}
@@ -226,7 +227,7 @@ const Instances = {
     if (browser === 'cloakbrowser') {
       return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect)">Cloak</span>`;
     }
-    return `<span class="type-badge chromium" title="Navegador: Chromium">Chromium</span>`;
+    return `<span class="type-badge chromium" title="Navegador: Chromium">Chro</span>`;
   },
 
   statusLabel(status) {
