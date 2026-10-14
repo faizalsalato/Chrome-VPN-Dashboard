@@ -639,6 +639,17 @@ class InstanceService {
       }
       // A extensão vive no /config do container: re-injeta sempre antes de subir.
       await this._injectFingerprint(id, fingerprint);
+
+      // Marcadores de trabalho no perfil. É idempotente e nunca apaga o que o
+      // usuário guardou: só acrescenta o que falta (pelo URL).
+      try {
+        const seeded = await dockerService.seedBookmarks(id, row.browser);
+        if (seeded.added) {
+          console.log(`[INFO] [instance-service] chrome${id}: ${seeded.added} marcador(es) adicionados`);
+        }
+      } catch (err) {
+        console.warn(`[WARN] [instance-service] Falha ao semear os marcadores do chrome${id}:`, err.message);
+      }
     } else if (changed) {
       // O container está no ar e o Docker não troca TZ/idioma sem recriá-lo.
       // A extensão cobre o que a página enxerga (fuso, idioma, tela), então

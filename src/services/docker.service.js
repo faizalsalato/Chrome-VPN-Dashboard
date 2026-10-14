@@ -7,12 +7,14 @@
  * das instâncias em instance-discovery.service.js.
  */
 const Docker = require('dockerode');
+const tar = require('tar-stream');
 const proxyInjector = require('./proxy-injector.service');
 const fingerprintService = require('./fingerprint.service');
 const chromeContainer = require('./chrome-container.service');
 const gluetunContainer = require('./gluetun-container.service');
 const cloakbrowser = require('./cloakbrowser.service');
 const browserImage = require('./browser-image.service');
+const bookmarks = require('./bookmarks.service');
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -127,6 +129,101 @@ class DockerService {
     } finally {
       await container.remove({ force: true }).catch(() => {});
     }
+  }
+
+  /**
+   * Lê um ficheiro de dentro do container. Funciona com o container parado
+   * (`getArchive` lê o sistema de ficheiros; não precisa do processo a correr).
+   *
+   * @returns {Promise<string|null>} conteúdo em UTF-8, ou null se não existir
+   */
+  async readContainerFile(id, filePath, client = docker) {
+    let stream;
+    try {
+      stream = await client.getContainer(`chrome${id}`).getArchive({ path: filePath });
+    } catch (err) {
+      if (err.statusCode === 404) return null;
+      throw err;
+    }
+
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      const extract = tar.extract();
+      extract.on('entry', (header, entry, next) => {
+        const parts = [];
+        entry.on('data', (chunk) => parts.push(chunk));
+        entry.on('end', () => {
+          chunks.push(Buffer.concat(parts));
+          next();
+        });
+      });
+      extract.on('error', reject);
+      extract.on('finish', resolve);
+      stream.on('error', reject);
+      stream.pipe(extract);
+    });
+
+    return chunks.length ? Buffer.concat(chunks).toString('utf-8') : null;
+  }
+
+  /**
+   * Escreve um ficheiro dentro do container, criando as pastas que faltarem.
+   *
+   * O `putArchive` extrai a partir de uma pasta que existe sempre (`root`) e o
+   * tar leva as entradas de diretório — é assim que a pasta do perfil nasce com
+   * o dono certo. Sem isso o `putArchive` falharia (não cria a pasta de destino)
+   * e um ficheiro de root ficaria só de leitura para o navegador da LinuxServer,
+   * que corre como `PUID`/`PGID`.
+   *
+   * Funciona com o container parado.
+   *
+   * @param {object} options { root, relativePath, content, uid, gid }
+   */
+  async writeContainerFile(id, { root, relativePath, content, uid = 0, gid = 0 }, client = docker) {
+    const parts = String(relativePath).split('/').filter(Boolean);
+    const buffer = Buffer.from(content, 'utf-8');
+
+    const pack = tar.pack();
+    for (let i = 1; i < parts.length; i++) {
+      pack.entry({ name: parts.slice(0, i).join('/'), type: 'directory', mode: 0o755, uid, gid });
+    }
+    pack.entry({ name: parts.join('/'), size: buffer.length, mode: 0o644, uid, gid }, buffer);
+    pack.finalize();
+
+    await client.getContainer(`chrome${id}`).putArchive(pack, { path: root });
+    return `${root}/${parts.join('/')}`;
+  }
+
+  /**
+   * Garante os marcadores de trabalho no perfil do navegador.
+   *
+   * Corre ANTES de o navegador arrancar (é ele quem reescreve o arquivo ao
+   * fechar) e nunca apaga marcadores do usuário: só acrescenta o que falta.
+   *
+   * @returns {Promise<{path: string, added: number, skipped: boolean}>}
+   */
+  async seedBookmarks(id, browser, client = docker) {
+    const target = chromeContainer.normalizeBrowser(browser);
+    const file = bookmarks.fileFor(target);
+
+    const current = await this.readContainerFile(id, file, client);
+    const result = bookmarks.build(current);
+    if (result.skipped) {
+      console.warn(`[WARN] [docker-service] Bookmarks de chrome${id} ilegível: não foi tocado`);
+      return { path: file, added: 0, skipped: true };
+    }
+
+    // Sem nada novo e com o arquivo já lá, não vale a pena mexer.
+    if (!current || result.added > 0) {
+      await this.writeContainerFile(id, {
+        root: bookmarks.rootFor(target),
+        relativePath: bookmarks.relativeFileFor(target),
+        content: `${JSON.stringify(result.bookmarks, null, 3)}\n`,
+        ...bookmarks.ownerFor(target)
+      }, client);
+    }
+
+    return { path: file, added: result.added, skipped: false };
   }
 
   /** Sobe o container do túnel (se existir e estiver parado). */
