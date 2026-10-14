@@ -228,7 +228,7 @@ Cada proxy tem um botão **"🧪 Testar"** (na lista e no formulário de cadastr
 
 - **API de teste**: `POST /api/proxies/test` (proxy informado no corpo) e `POST /api/proxies/:id/test` (proxy já salvo, busca credenciais no banco).
 - A geolocalização usa **ip-api.com** com **retry automático** em caso de rate-limit (limite do plano gratuito).
-- **Nota (whoer.net)** — a nota de anonimato desconta **30%** quando o servidor DNS resolve **noutro país** que o IP de saída. Quem escolhe o resolver é o provedor do proxy, não o dashboard: proxies cujo resolver geolocaliza no país de saída (ex.: os de Denver/US) dão **90%**, enquanto os de Munique (resolver público visto na Bélgica) ficam nos **70%**. Medido no próprio browser, pelo CDP, depois de a política desligar o DNS-over-HTTPS e a pré-busca.
+- **Nota (whoer.net)** — a nota de anonimato desconta **30%** quando o servidor DNS resolve **noutro país** que o IP de saída. Quem escolhe o resolver é o provedor do proxy, não o dashboard: proxies cujo resolver geolocaliza no país de saída (ex.: os de Denver/US) dão **90%**, enquanto os de Munique (resolver público visto na Bélgica) ficam nos **70%**. Medido no próprio browser, pelo CDP, depois de a política desligar o DNS-over-HTTPS e a pré-busca. Nas instâncias **VPN** o DNS vai todo pelo túnel e resolve no país de saída: **United States = 100%** (sem descontos); a Alemanha fica em **90%** por causa do `-10% Systemzeit` (a base do whoer não acompanha o horário de verão), que é uma comparação deles e não do perfil.
 
 
 ## Perfis e Fingerprint (antidetect, estilo GoLogin)
