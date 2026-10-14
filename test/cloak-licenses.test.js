@@ -113,3 +113,128 @@ describe('cloak-licenses.service — biblioteca de chaves', () => {
     expect(checked.checkedAt).toBeTruthy();
   });
 });
+
+/**
+ * Verificação no site do vendor (cloakbrowser.dev).
+ *
+ * É a única forma de saber se a chave ainda vale e até quando: `validate` diz o
+ * plano e o prazo, `session/count` diz os lugares em uso. O módulo `https` é
+ * injetado, por isso estes testes não tocam na rede.
+ */
+describe('cloak-licenses.service — verificação no vendor', () => {
+  beforeEach(() => {
+    mockDb.exec('DROP TABLE IF EXISTS cloak_licenses');
+    mockDb.exec('DROP TABLE IF EXISTS instances');
+    mockDb.exec(SCHEMA);
+    cloakLicenses.addMany('chave-aaaa-1111');
+  });
+
+  /** Duplo do `https`: responde por caminho do pedido. */
+  function fakeHttps(answers) {
+    return {
+      request(options, callback) {
+        const answer = answers[options.path] || { status: 500, body: '{}' };
+        const req = {
+          on() { return req; },
+          write() {},
+          end() {
+            const res = {
+              statusCode: answer.status,
+              on(event, handler) {
+                if (event === 'data') handler(answer.body);
+                if (event === 'end') handler();
+                return res;
+              }
+            };
+            callback(res);
+          }
+        };
+        return req;
+      }
+    };
+  }
+
+  it('lê plano, prazo e lugares e grava na linha da chave', async () => {
+    const [item] = cloakLicenses.list();
+    const client = fakeHttps({
+      '/api/license/validate': {
+        status: 200,
+        body: '{"valid":true,"plan":"trial","expires":"2026-10-17T12:56:09+00:00"}'
+      },
+      '/api/license/session/count': { status: 200, body: '{"valid":true,"active":0,"limit":5}' }
+    });
+
+    const result = await cloakLicenses.check(item.id, { client });
+
+    expect(result.checked).toBe(true);
+    expect(result.valid).toBe(true);
+    expect(result.plan).toBe('trial');
+    expect(result.expires).toBe('2026-10-17T12:56:09+00:00');
+    expect(result.seatsActive).toBe(0);
+    expect(result.seatsLimit).toBe(5);
+
+    const [checked] = cloakLicenses.list();
+    expect(checked.plan).toBe('trial');
+    expect(checked.expires).toBe('2026-10-17T12:56:09+00:00');
+    expect(checked.seatsLimit).toBe(5);
+    expect(checked.checkedAt).toBeTruthy();
+  });
+
+  it('marca o motivo quando o vendor recusa a chave, sem apagar o que já sabia', async () => {
+    const [item] = cloakLicenses.list();
+    cloakLicenses.saveCheck(item.id, { plan: 'trial', expires: '2026-10-17', seatsActive: 0, seatsLimit: 5 });
+
+    const client = fakeHttps({ '/api/license/validate': { status: 403, body: '{"error":"invalid_key"}' } });
+    const result = await cloakLicenses.check(item.id, { client });
+
+    expect(result.checked).toBe(false);
+    expect(result.error).toBe('invalid_key');
+
+    const [kept] = cloakLicenses.list();
+    expect(kept.plan).toBe('trial');
+    expect(kept.expires).toBe('2026-10-17');
+  });
+
+  it('uma falha de rede não invalida a chave', async () => {
+    const [item] = cloakLicenses.list();
+    const client = {
+      request() {
+        const req = {
+          on(event, handler) {
+            if (event === 'error') {
+              setTimeout(() => handler(new Error('getaddrinfo ENOTFOUND cloakbrowser.dev')), 0);
+            }
+            return req;
+          },
+          write() {},
+          end() {}
+        };
+        return req;
+      }
+    };
+
+    const result = await cloakLicenses.check(item.id, { client });
+
+    expect(result.checked).toBe(false);
+    expect(result.error).toMatch(/ENOTFOUND/);
+    expect(cloakLicenses.list()[0].plan).toBeNull();
+  });
+
+  it('verifica todas as chaves da biblioteca de uma vez', async () => {
+    cloakLicenses.addMany('chave-bbbb-2222');
+    const client = fakeHttps({
+      '/api/license/validate': { status: 200, body: '{"valid":true,"plan":"pro"}' },
+      '/api/license/session/count': { status: 200, body: '{"active":1,"limit":10}' }
+    });
+
+    const results = await cloakLicenses.checkAll({ client });
+
+    expect(results).toHaveLength(2);
+    expect(cloakLicenses.list().every(item => item.plan === 'pro')).toBe(true);
+    expect(cloakLicenses.list().every(item => item.seatsLimit === 10)).toBe(true);
+  });
+
+  it('chave que não está na biblioteca dá 404', async () => {
+    await expect(cloakLicenses.check(999)).rejects.toMatchObject({ status: 404 });
+  });
+});

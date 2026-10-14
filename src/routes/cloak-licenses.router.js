@@ -32,6 +32,21 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// POST /api/cloak-licenses/check - Verifica as chaves no site do vendor
+// (plano, prazo e lugares em uso) e devolve a lista já atualizada.
+router.post('/check', async (req, res, next) => {
+  try {
+    const results = await cloakLicenses.checkAll();
+    const failed = results.filter(r => r.error);
+    const message = failed.length
+      ? `${results.length - failed.length} de ${results.length} chave(s) verificada(s)`
+      : `${results.length} chave(s) verificada(s)`;
+    res.json({ message, results, licenses: cloakLicenses.list(), total: cloakLicenses.count() });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/cloak-licenses/:id - Remove uma chave (solta as instâncias que a usavam)
 router.delete('/:id', async (req, res, next) => {
   try {

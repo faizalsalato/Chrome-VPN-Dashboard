@@ -688,6 +688,17 @@ a:hover {
   white-space: nowrap;
 }
 
+/* Prazo da chave do CloakBrowser: avisa antes de a licença acabar. */
+.type-badge.expiry-soon {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.type-badge.expired {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* Separador dos selos no título do cartão: "1 | Cloak | Surf". */
 .card-title .title-sep {
   color: var(--text-muted);

@@ -23,6 +23,7 @@ const CloakLicenses = {
   _bindButtons() {
     const closeBtn = document.getElementById('cloak-licenses-close');
     const addBtn = document.getElementById('cloak-licenses-add');
+    const checkBtn = document.getElementById('cloak-licenses-check');
     if (!closeBtn || !addBtn) return;
 
     const newClose = closeBtn.cloneNode(true);
@@ -32,6 +33,12 @@ const CloakLicenses = {
 
     newClose.addEventListener('click', () => this.close());
     newAdd.addEventListener('click', () => this.add());
+
+    if (checkBtn) {
+      const newCheck = checkBtn.cloneNode(true);
+      checkBtn.parentNode.replaceChild(newCheck, checkBtn);
+      newCheck.addEventListener('click', () => this.check());
+    }
   },
 
   async refresh() {
@@ -59,7 +66,7 @@ const CloakLicenses = {
     });
   },
 
-  /** Uma linha por chave: pontas da chave + uso/plano/sessões + remover. */
+  /** Uma linha por chave: pontas da chave + uso/plano/prazo/sessões + remover. */
   _rowHtml(item) {
     const parts = [item.instances ? `usada por ${item.instances} instância(s)` : 'sem uso'];
     if (item.plan) parts.push(item.plan);
@@ -67,15 +74,43 @@ const CloakLicenses = {
       parts.push(`${item.seatsActive}/${item.seatsLimit} sessões`);
     }
 
+    // O prazo é o que se olha primeiro numa chave de teste: vai no mesmo selo,
+    // pintado quando está perto do fim (ou já passou).
+    const expiry = this._expiry(item.expires);
+    if (expiry) parts.push(expiry.label);
+
+    const classes = ['type-badge'];
+    if (expiry && expiry.urgent) classes.push(expiry.expired ? 'expired' : 'expiry-soon');
+
     return `
       <div class="cloak-license-row" data-id="${item.id}">
         <div class="cloak-license-info">
           <span class="cloak-license-key">${item.masked}</span>
-          <span class="type-badge">${parts.join(' · ')}</span>
+          <span class="${classes.join(' ')}">${parts.join(' · ')}</span>
         </div>
         <button type="button" class="btn btn-danger btn-sm cloak-license-remove"
                 data-id="${item.id}" data-masked="${item.masked}">Remover</button>
       </div>`;
+  },
+
+  /**
+   * Prazo da chave em texto curto ("expira 17/10/2026 (em 3 dias)").
+   * `urgent` marca o que está a 7 dias ou menos; `expired`, o que já passou.
+   */
+  _expiry(iso) {
+    if (!iso) return null;
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return { label: `expira ${iso}`, urgent: false, expired: false };
+
+    const day = date.toLocaleDateString('pt-BR');
+    const days = Math.ceil((date.getTime() - Date.now()) / 86400000);
+    if (days < 0) return { label: `expirada em ${day}`, urgent: true, expired: true };
+    if (days === 0) return { label: 'expira hoje', urgent: true, expired: false };
+    return {
+      label: `expira ${day} (em ${days} dia${days === 1 ? '' : 's'})`,
+      urgent: days <= 7,
+      expired: false
+    };
   },
 
   /** Adiciona tudo o que estiver no textarea (uma chave por linha). */
@@ -100,6 +135,31 @@ const CloakLicenses = {
     } finally {
       btn.classList.remove('loading');
       btn.disabled = false;
+    }
+  },
+
+  /**
+   * Pergunta ao vendor o estado das chaves: plano, prazo e lugares em uso.
+   * É a única forma de saber se a chave ainda vale (e até quando) antes de
+   * alguma instância Pro falhar.
+   */
+  async check() {
+    const btn = document.getElementById('cloak-licenses-check');
+    if (btn) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+    }
+    try {
+      const result = await API.post('/cloak-licenses/check', {});
+      App.showToast(result.message || 'Chaves verificadas', 'success');
+      await this.refresh();
+    } catch (err) {
+      App.showToast(err.message || 'Erro ao verificar as chaves', 'error');
+    } finally {
+      if (btn) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
     }
   },
 

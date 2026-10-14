@@ -10,10 +10,19 @@
  * precisa dela por inteiro é o servidor, ao montar o container.
  */
 const { getDb } = require('../database');
+const https = require('https');
 
 // Comprimento mínimo aceite: uma chave do CloakBrowser é bem maior que isto —
 // o corte existe só para não guardar um engano de digitação óbvio.
 const MIN_KEY_LENGTH = 8;
+
+// API do vendor (os mesmos endereços que o wrapper Python usa — ver
+// `cloakbrowser/license.py` dentro da imagem). `validate` diz o plano e o prazo;
+// `session/count` diz quantos lugares a chave está a ocupar e o limite.
+const VALIDATE_URL = 'https://cloakbrowser.dev/api/license/validate';
+const SESSION_COUNT_URL = 'https://cloakbrowser.dev/api/license/session/count';
+const PLATFORM_TAG = 'linux-x64';
+const CHECK_TIMEOUT_MS = 12000;
 
 class CloakLicensesService {
   /** Lista as chaves (mascaradas), com o plano e quantas instâncias as usam. */
@@ -166,6 +175,116 @@ class CloakLicensesService {
       id
     );
     return { id, checked: true };
+  }
+
+  /**
+   * Pergunta ao vendor o estado de UMA chave: plano, prazo e lugares em uso.
+   *
+   * Uma chave Pro vale enquanto o vendor a aceitar; sem esta consulta a
+   * biblioteca só saberia o que o container conseguiu fazer. O resultado é
+   * gravado na linha (plano/prazo/lugares) e volta para quem chamou.
+   *
+   * `client` é injetável para os testes (mesmo padrão de
+   * `dockerService.listPublishedPorts`): em produção é o módulo `https`.
+   *
+   * @returns {Promise<{id:number, valid:boolean|null, plan:string|null,
+   *   expires:string|null, seatsActive:number|null, seatsLimit:number|null,
+   *   checked:boolean, error:string|null}>}
+   */
+  async check(id, { client = https, timeoutMs = CHECK_TIMEOUT_MS } = {}) {
+    const key = this.keyFor(id);
+    if (!key) {
+      throw Object.assign(new Error('Chave não encontrada'), { status: 404 });
+    }
+
+    const info = {
+      id, valid: null, plan: null, expires: null,
+      seatsActive: null, seatsLimit: null, checked: false, error: null
+    };
+
+    try {
+      const res = await this._postJson(VALIDATE_URL, key, client, timeoutMs);
+      const data = this._json(res.body);
+      if (res.status >= 400) {
+        // O vendor explica o motivo no campo `error` (invalid_key,
+        // license_inactive, rate_limited...).
+        info.error = data.error || `HTTP ${res.status}`;
+      } else {
+        info.valid = data.valid === true;
+        info.plan = data.plan || null;
+        info.expires = data.expires || null;
+        info.checked = true;
+      }
+    } catch (err) {
+      // Sem rede/DNS/TLS: a chave não fica marcada como inválida por isso.
+      info.error = err.message || 'falha ao falar com cloakbrowser.dev';
+    }
+
+    if (info.checked) {
+      try {
+        const res = await this._postJson(SESSION_COUNT_URL, key, client, timeoutMs);
+        if (res.status < 400) {
+          const data = this._json(res.body);
+          if (Number.isInteger(data.active)) info.seatsActive = data.active;
+          if (Number.isInteger(data.limit)) info.seatsLimit = data.limit;
+        }
+      } catch (err) {
+        // Lugares são informativos: falhar aqui não desmente o plano.
+      }
+      // Só grava quando o vendor respondeu: uma falha de rede não pode apagar o
+      // plano/prazo que já se sabia.
+      this.saveCheck(id, info);
+    }
+
+    return info;
+  }
+
+  /** Verifica todas as chaves da biblioteca (uma consulta por chave). */
+  async checkAll(options = {}) {
+    const results = [];
+    for (const item of this.list()) {
+      results.push(await this.check(item.id, options));
+    }
+    return results;
+  }
+
+  /** POST JSON no vendor. `client` é o módulo `https` (ou um duplo nos testes). */
+  _postJson(url, licenseKey, client, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const target = new URL(url);
+      const body = JSON.stringify({ license_key: licenseKey });
+      const req = client.request({
+        host: target.hostname,
+        port: target.port || 443,
+        path: target.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          'X-Platform': PLATFORM_TAG
+        },
+        timeout: timeoutMs
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      });
+
+      req.on('timeout', () => req.destroy(new Error('Tempo esgotado ao falar com cloakbrowser.dev')));
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
+  }
+
+  /** Corpo em JSON; um corpo ilegível vira objeto vazio (nunca rebenta a rota). */
+  _json(text) {
+    try {
+      const data = JSON.parse(text);
+      return data && typeof data === 'object' ? data : {};
+    } catch (err) {
+      return {};
+    }
   }
 
   /** Quantas instâncias usam cada chave (id da chave → total). */
