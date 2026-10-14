@@ -59,8 +59,12 @@ const ROUTER_END_MARKER = 'PORT_ROUTER_EOF';
 // A política é o caminho suportado e vale para qualquer perfil, novo ou já
 // existente.
 const POLICY_DIR = '/etc/chromium/policies/managed';
-const POLICY_FILE = `${POLICY_DIR}/search.json`;
-const POLICY_END_MARKER = 'SEARCH_POLICY_EOF';
+// Política gerida do perfil: motor de busca + DNS. O nome do ficheiro mudou
+// quando o DNS entrou aqui; o antigo é removido no arranque para não sobreviver
+// com valores velhos (o Chromium junta todos os ficheiros da pasta).
+const POLICY_FILE = `${POLICY_DIR}/dashboard.json`;
+const LEGACY_POLICY_FILES = [`${POLICY_DIR}/search.json`];
+const POLICY_END_MARKER = 'DASHBOARD_POLICY_EOF';
 // Semente padrão do binário (v146) — usada só quando o Docker não responde.
 const FALLBACK_VERSION = '146.0.7680.177';
 // O binário espera um número de 5 dígitos (SEED_MIN/SEED_MAX do wrapper).
@@ -313,24 +317,34 @@ class CloakBrowserService {
   }
 
   /**
-   * Comando que escreve a política do motor de busca dentro do container.
+   * Comando que escreve a política gerida dentro do container.
    * Mesmo padrão do roteador: heredoc com marcador, para o JSON não sofrer
    * interpretação pelo shell.
    */
-  searchPolicyCommand() {
+  policyCommand() {
     return [
       `mkdir -p ${POLICY_DIR}`,
+      ...LEGACY_POLICY_FILES.map((file) => `rm -f ${file}`),
       `cat > ${POLICY_FILE} <<'${POLICY_END_MARKER}'`,
-      JSON.stringify(this.searchPolicy()),
+      JSON.stringify(this.policy()),
       POLICY_END_MARKER
     ].join('\n');
   }
 
   /**
-   * Conteúdo da política: Google como motor padrão (sobrescrevível por
-   * BROWSER_SEARCH_NAME / BROWSER_SEARCH_URL / BROWSER_SEARCH_SUGGEST_URL).
+   * Conteúdo da política gerida:
+   *
+   *  - **motor de busca** — o binário do CloakBrowser não traz o Google na lista
+   *    prepopulada (tem Bing/DuckDuckGo/Ecosia): sem motor padrão, escrever uma
+   *    palavra na barra de endereços não pesquisa (ela é tratada como endereço e
+   *    dá erro de DNS). Sobrescrevível por BROWSER_SEARCH_NAME / _URL /
+   *    _SUGGEST_URL.
+   *  - **DNS-over-HTTPS DESLIGADO** — com DoH o nome é resolvido por HTTPS num
+   *    resolver público (o Google), que o whoer vê noutro país e desconta 30% da
+   *    nota de anonimato. Desligado, quem resolve é o proxy/VPN da instância: o
+   *    DNS acompanha o IP de saída, como deve.
    */
-  searchPolicy() {
+  policy() {
     const name = String(process.env.BROWSER_SEARCH_NAME || '').trim() || 'Google';
     const searchUrl = String(process.env.BROWSER_SEARCH_URL || '').trim()
       || 'https://www.google.com/search?q={searchTerms}';
@@ -342,7 +356,16 @@ class CloakBrowserService {
       DefaultSearchProviderName: name,
       DefaultSearchProviderKeyword: name.toLowerCase(),
       DefaultSearchProviderSearchURL: searchUrl,
-      DefaultSearchProviderSuggestURL: suggestUrl
+      DefaultSearchProviderSuggestURL: suggestUrl,
+      // DNS-over-HTTPS desligado: com DoH o nome é resolvido por HTTPS num
+      // resolver público (Google), que o whoer vê noutro país e desconta 30% da
+      // nota de anonimato.
+      DnsOverHttpsMode: 'off',
+      // Sem pré-busca de rede: o Chromium resolve ANTES (prefetch/preconnect)
+      // nomes que ainda nem foram visitados — e essa resolução não passa pelo
+      // proxy, então vaza o resolver real. Desligado, quem resolve é o
+      // proxy/VPN da instância, que é o que o IP de saída anuncia.
+      NetworkPredictionOptions: 2
     };
   }
 
@@ -395,6 +418,9 @@ class CloakBrowserService {
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-dev-shm-usage',
+      // Sem pré-busca de DNS: o prefetch resolve nomes fora do proxy e vaza o
+      // resolver real (a política NetworkPredictionOptions cobre o resto).
+      '--dns-prefetch-disable',
       // Em modo headed o Chromium bloqueia WebGL em GPU de software (X sem
       // GPU): esta flag deixa o SwiftShader servir o WebGL. É o que o wrapper usa.
       '--ignore-gpu-blocklist',
@@ -408,7 +434,7 @@ class CloakBrowserService {
       ...this.fingerprintFlags(config),
       HOME_URL
     ];
-    const steps = [this.routerCommand(), this.searchPolicyCommand()];
+    const steps = [this.routerCommand(), this.policyCommand()];
     // A edição "nova" precisa do binário mais recente antes de arrancar.
     if (pro) steps.push(this.installCommand());
     steps.push(parts.join(' '));
@@ -550,6 +576,7 @@ module.exports.ROUTER_SOURCE = ROUTER_SOURCE;
 module.exports.ROUTER_END_MARKER = ROUTER_END_MARKER;
 module.exports.POLICY_DIR = POLICY_DIR;
 module.exports.POLICY_FILE = POLICY_FILE;
+module.exports.LEGACY_POLICY_FILES = LEGACY_POLICY_FILES;
 module.exports.POLICY_END_MARKER = POLICY_END_MARKER;
 module.exports.CHROME_BINARY = CHROME_BINARY;
 module.exports.CACHE_DIR = CACHE_DIR;

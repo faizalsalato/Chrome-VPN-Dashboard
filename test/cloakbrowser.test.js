@@ -211,17 +211,42 @@ describe('comando do container (Chrome com janela no X do container)', () => {
   });
 });
 
-describe('motor de busca padrão (a barra de endereços tem de pesquisar)', () => {
+describe('política gerida (motor de busca + DNS)', () => {
   it('escreve a política com o Google como motor padrão', () => {
-    const comando = cloakbrowser.searchPolicyCommand();
+    const comando = cloakbrowser.policyCommand();
 
     expect(comando).toContain(`mkdir -p ${cloakbrowser.POLICY_DIR}`);
     expect(comando).toContain(`cat > ${cloakbrowser.POLICY_FILE} <<'${cloakbrowser.POLICY_END_MARKER}'`);
     expect(comando).toContain('"DefaultSearchProviderEnabled":true');
 
-    const politica = cloakbrowser.searchPolicy();
+    const politica = cloakbrowser.policy();
     expect(politica.DefaultSearchProviderName).toBe('Google');
     expect(politica.DefaultSearchProviderSearchURL).toBe('https://www.google.com/search?q={searchTerms}');
+  });
+
+  it('desliga o DNS-over-HTTPS (senão o DNS aparece noutro país)', () => {
+    // Com DoH o nome é resolvido pelo Google: o whoer vê um resolver de outro
+    // país e desconta 30% da nota de anonimato.
+    expect(cloakbrowser.policy().DnsOverHttpsMode).toBe('off');
+  });
+
+  it('desliga a pré-busca de rede e de DNS (o prefetch resolve fora do proxy)', () => {
+    expect(cloakbrowser.policy().NetworkPredictionOptions).toBe(2);
+
+    const script = cloakbrowser.serveCommand({ type: 'vpn', fingerprint: FINGERPRINT })[2];
+    expect(script).toContain('--dns-prefetch-disable');
+  });
+
+  it('apaga o ficheiro de política antigo antes de escrever o novo', () => {
+    const comando = cloakbrowser.policyCommand();
+    const posicaoRm = comando.indexOf('rm -f');
+
+    expect(posicaoRm).toBeGreaterThan(-1);
+    // O Chromium junta os ficheiros da pasta: o antigo não pode sobreviver.
+    for (const antigo of cloakbrowser.LEGACY_POLICY_FILES) {
+      expect(comando).toContain(`rm -f ${antigo}`);
+      expect(posicaoRm).toBeLessThan(comando.indexOf(cloakbrowser.POLICY_FILE));
+    }
   });
 
   it('a política viaja no comando do container, antes do Chrome arrancar', () => {
@@ -239,7 +264,7 @@ describe('motor de busca padrão (a barra de endereços tem de pesquisar)', () =
     process.env.BROWSER_SEARCH_NAME = 'DuckDuckGo';
     process.env.BROWSER_SEARCH_URL = 'https://duckduckgo.com/?q={searchTerms}';
     try {
-      const politica = cloakbrowser.searchPolicy();
+      const politica = cloakbrowser.policy();
       expect(politica.DefaultSearchProviderName).toBe('DuckDuckGo');
       expect(politica.DefaultSearchProviderSearchURL).toBe('https://duckduckgo.com/?q={searchTerms}');
     } finally {
