@@ -73,7 +73,7 @@ const Instances = {
     // Badge do provedor VPN (Surfshark ou ExpressVPN) — só para instâncias VPN.
     const vpnProviderBadge = type !== 'proxy'
       ? (instance.vpnProvider === 'expressvpn'
-          ? `<span class="type-badge expressvpn" title="Provedor VPN: ExpressVPN">Express</span>`
+          ? `<span class="type-badge expressvpn" title="Provedor VPN: ExpressVPN">Expr</span>`
           : `<span class="type-badge surfshark" title="Provedor VPN: Surfshark">Surf</span>`)
       : '';
 
