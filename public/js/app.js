@@ -292,6 +292,9 @@ const App = {
         type: 'proxy',
         browser,
         cloakEdition,
+        // Id na biblioteca: o servidor guarda-o para o cartão mostrar a geo da
+        // saída (IP, cidade, fuso, ISP) e não o endereço do proxy.
+        proxyId: Number(proxyId) || null,
         proxy: {
           host: proxy.host,
           port: proxy.port,

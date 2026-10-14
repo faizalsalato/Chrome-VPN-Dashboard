@@ -77,7 +77,8 @@ jest.mock('../src/database', () => ({
           state.row.proxy_pass = args[3];
           state.row.proxy_scheme = args[4];
           state.row.proxy_auth = args[5];
-          state.row.fingerprint = args[6];
+          state.row.proxy_id = args[6];
+          state.row.fingerprint = args[7];
         }
         return {};
       }
@@ -151,9 +152,10 @@ describe('instanceService.changeProxy', () => {
     expect(update.args[0]).toBe('5.6.7.8');
     expect(update.args[1]).toBe(3128);
     expect(update.args[5]).toBe(1);   // proxy_auth
-    expect(update.args[7]).toBe(2);   // id
+    expect(update.args[6]).toBe(7);   // proxy_id: liga a instância à geo do proxy
+    expect(update.args[8]).toBe(2);   // id da instância
     // ...e o perfil é regerado para a geo do proxy novo.
-    expect(JSON.parse(update.args[6]).geo.country).toBe('Germany');
+    expect(JSON.parse(update.args[7]).geo.country).toBe('Germany');
 
     // O forwarder de autenticação sobe com o proxy NOVO (a ordem importa).
     expect(proxyInjector.start).toHaveBeenCalledWith(2, {

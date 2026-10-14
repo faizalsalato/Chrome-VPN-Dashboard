@@ -688,6 +688,13 @@ a:hover {
   white-space: nowrap;
 }
 
+/* Separador dos selos no título do cartão: "1 | Cloak | Surf". */
+.card-title .title-sep {
+  color: var(--text-muted);
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 /* ============================================
    Cartão da instância — apresentação dos campos
    ============================================ */

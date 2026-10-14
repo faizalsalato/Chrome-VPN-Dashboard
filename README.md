@@ -196,7 +196,7 @@ Cada instância VPN usa um dos provedores suportados pelo Gluetun (OpenVPN):
 - **Menu "Credenciais VPN"** (botão 🔑 na barra de ações): salve usuário/senha OpenVPN de cada provedor. A senha é **mascarada** (nunca retornada pela API). Salvar = **push para o banco** do dashboard (`vpn_credentials`).
 - As credenciais legadas continuam como **fallback** até você salvar as novas.
 - **API**: `GET /api/vpn-credentials` (status por provedor) e `PUT /api/vpn-credentials/:provider` (`{"username","password"}`).
-- Na criação: seletor **"Provedor VPN"** (Surfshark/ExpressVPN); o card exibe o badge 🦈 Surfshark / 🛡️ ExpressVPN.
+- Na criação: seletor **"Provedor VPN"** (Surfshark/ExpressVPN); o card exibe o selo **Surf** / **Express**.
 - A **troca de país** preserva provedor, navegador e fingerprint.
 
 ## Biblioteca de Proxies (🔌)
@@ -207,6 +207,7 @@ O menu **"Proxies"** (botão 🔌 na barra de ações) é uma biblioteca de prox
 - **Escolher na criação**: ao criar uma instância do tipo Proxy, o campo **"Proxy salvo"** lista os proxies cadastrados e **preenche automaticamente** host/porta/usuário/senha (inclusive o modo autenticado).
 - **Importar em lote**: cole uma lista (um proxy por linha) no textarea e clique em **"Importar Lista"**. Formatos aceitos: `host:porta:user:pass` (Bright Data), `host:porta`, `user:pass@host:porta` e `http(s)://host:porta`. Linhas em branco e com `#` são ignoradas. **Duplicados** (mesmo host:porta:usuário) são ignorados automaticamente. O nome é gerado a partir de `user@host:porta`.
 - **API**: `GET/POST/PUT/DELETE /api/proxies`, `GET /api/proxies/:id/full` (com senha, uso interno na criação) e `POST /api/proxies/bulk` (importação em lote; body `{ list: "..." }` ou `{ items: [...] }`).
+- **No cartão da instância**: instâncias do tipo Proxy mostram **onde o proxy sai** — IP, `cidade, país`, fuso e ISP do último teste guardado na biblioteca — e não o endereço do proxy. A ligação é a coluna `instances.proxy_id` (gravada na criação e na troca de proxy); instâncias criadas antes da coluna são religadas pelo host/porta/usuário no arranque do banco.
 
 ### 🧪 Testar proxy (live/morto + geolocalização)
 
@@ -261,6 +262,7 @@ O mascaramento atua **dentro da página** (JS, via content script em `world: "MA
 
 - **URL**: `http://IP_DO_SERVIDOR:3100` (ou via Nginx/Cloudflared)
 - **Login**: `admin` / `admin123`
+- **Cartão da instância**: mostra **só o botão 🖥 Abrir tela** (no CloakBrowser é a tela do KasmVNC; no Chromium/Brave é a área de trabalho do subdomínio). A **porta** e a **URL** saíram do cartão. O título é curto e separado por `|` — `1 | Cloak | Surf` (número | tipo | navegador | provedor VPN).
 
 ## Estrutura
 

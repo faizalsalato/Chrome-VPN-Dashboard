@@ -217,6 +217,31 @@ class ProxiesService {
     return { imported, skipped, total: Array.isArray(items) ? items.length : 0 };
   }
 
+  /**
+   * Geo de TODOS os proxies salvos (id → geo do último teste), numa consulta só.
+   * É o que permite ao cartão da instância mostrar onde o proxy sai (IP, cidade,
+   * fuso, ISP) sem fazer uma consulta por instância.
+   */
+  geoMap() {
+    const rows = getDb().prepare(
+      'SELECT id, country, country_code, city, timezone, geo_ip, isp, tested_at FROM proxies'
+    ).all();
+    return new Map(rows.map(r => [r.id, {
+      country: r.country || null,
+      countryCode: r.country_code || null,
+      city: r.city || null,
+      timezone: r.timezone || null,
+      ip: r.geo_ip || null,
+      isp: r.isp || null,
+      testedAt: r.tested_at || null
+    }]));
+  }
+
+  /** Geo de um proxy salvo (null quando não existe). */
+  geoFor(id) {
+    return this.geoMap().get(id) || null;
+  }
+
   /** Lê apenas a senha de um proxy (uso interno em validações). */
   _passwordOf(id) {
     const row = getDb().prepare('SELECT password FROM proxies WHERE id = ?').get(id);

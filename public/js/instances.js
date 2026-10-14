@@ -56,16 +56,16 @@ const Instances = {
     const domain = instance.subdomain || `chrome${instance.id}.sakr.ath.cx`;
     const url = `https://${domain}`;
     const type = instance.type || 'vpn';
-    const proxy = instance.proxyInfo;
     const vpn = instance.vpnInfo;
 
     // Só o CloakBrowser tem duas versões: antiga (sem chave) e nova (com licença).
     const isCloak = instance.browser === 'cloakbrowser';
     const cloakEdition = instance.cloakEdition === 'pro' ? 'pro' : 'free';
 
+    // Selos CURTOS: cabem todos na mesma linha do título (separados por |).
     const typeBadge = type === 'proxy'
-      ? `<span class="type-badge proxy">🌐 Proxy</span>`
-      : `<span class="type-badge vpn">🔒 VPN</span>`;
+      ? `<span class="type-badge proxy">Proxy</span>`
+      : `<span class="type-badge vpn">VPN</span>`;
 
     // Badge do navegador do perfil (Chromium, Brave ou CloakBrowser).
     const browserBadge = this.browserBadge(instance.browser);
@@ -73,28 +73,39 @@ const Instances = {
     // Badge do provedor VPN (Surfshark ou ExpressVPN) — só para instâncias VPN.
     const vpnProviderBadge = type !== 'proxy'
       ? (instance.vpnProvider === 'expressvpn'
-          ? `<span class="type-badge expressvpn" title="Provedor VPN: ExpressVPN">🛡️ ExpressVPN</span>`
-          : `<span class="type-badge surfshark" title="Provedor VPN: Surfshark">🦈 Surfshark</span>`)
+          ? `<span class="type-badge expressvpn" title="Provedor VPN: ExpressVPN">Express</span>`
+          : `<span class="type-badge surfshark" title="Provedor VPN: Surfshark">Surf</span>`)
       : '';
 
-    // Seção de conexão: Proxy (mutuamente exclusivo com VPN).
+    // Título = número da instância + selos, separados por "|".
+    const titleHtml = [String(instance.id), typeBadge, browserBadge, vpnProviderBadge]
+      .filter(Boolean)
+      .join(' <span class="title-sep">|</span> ');
+
+    // Seção de conexão (proxy): mostra ONDE o proxy sai — geo do último teste
+    // guardado na biblioteca (IP, cidade/país, fuso e ISP) — e não o endereço.
+    // Sem geo na biblioteca, cai na geo do perfil.
     let connSection = '';
     if (type === 'proxy') {
-      const target = proxy ? `${proxy.scheme || 'http'}://${proxy.host}:${proxy.port}` : 'N/A';
-      const authLabel = proxy ? (proxy.auth ? 'Sim' : 'Não') : 'N/A';
+      const geo = instance.proxyGeo || (instance.fingerprint && instance.fingerprint.geo) || {};
+      const local = [geo.city, geo.country].filter(Boolean).join(', ') || 'N/A';
       connSection = `
           <div class="proxy-info">
             <div class="info-row">
-              <span class="info-label">Conexão</span>
-              <span class="info-value">Proxy</span>
+              <span class="info-label">IP</span>
+              <span class="info-value">${geo.ip || 'N/A'}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Endereço</span>
-              <span class="info-value">${target}</span>
+              <span class="info-label">Local</span>
+              <span class="info-value">${local}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Autenticação</span>
-              <span class="info-value">${authLabel}</span>
+              <span class="info-label">Fuso</span>
+              <span class="info-value">${geo.timezone || 'N/A'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">ISP</span>
+              <span class="info-value">${geo.isp || 'N/A'}</span>
             </div>
           </div>`;
     }
@@ -158,25 +169,15 @@ const Instances = {
         <div class="card-header">
           <div class="card-title">
             <span class="status-dot ${instance.status}"></span>
-            Chrome ${instance.id}
-            ${typeBadge}
-            ${browserBadge}
-            ${vpnProviderBadge}
+            ${titleHtml}
           </div>
           <span class="card-status ${instance.status}">${this.statusLabel(instance.status)}</span>
         </div>
         <div class="card-body">
-          <div class="card-info">
-            <div class="info-row">
-              <span class="info-label">Porta</span>
-              <span class="info-value">${instance.port}</span>
-            </div>
-            ${this.accessRow(instance, url, domain)}
-          </div>
           ${connSection}${vpnSection}${fpSection}
         </div>
         <div class="card-actions">
-          ${this.desktopButton(instance)}
+          ${this.desktopButton(instance, url)}
           ${startStopBtn}
           <button class="btn btn-secondary btn-sm action-restart" data-id="${instance.id}">
             <span class="btn-text">🔄 Restart</span>
@@ -201,61 +202,31 @@ const Instances = {
   },
 
   /**
-   * Linhas de acesso do cartão.
-   *
-   * Chromium/Brave: uma URL só, a área de trabalho deles.
-   *
-   * CloakBrowser: a "Tela" é o cliente do KasmVNC servido pelo próprio
-   * container do navegador (o endereço é limpo, sem query string: parâmetros
-   * de resize encolhiam a janela do navegador).
+   * Botão de abrir a tela — o ÚNICO acesso que o cartão mostra (o endereço e a
+   * porta saíram do cartão). Vale para os três navegadores: no CloakBrowser a
+   * tela é o cliente do KasmVNC do próprio container; no Chromium/Brave é a
+   * área de trabalho servida no subdomínio.
    */
-  accessRow(instance, url, domain) {
-    if (!instance.vnc) {
-      return `<div class="info-row">
-              <span class="info-label">URL</span>
-              <div class="url-row">
-                <a href="${url}" target="_blank" rel="noopener" class="info-value">${domain}</a>
-                <button class="copy-btn" data-url="${url}" title="Copiar URL">📋</button>
-              </div>
-            </div>`;
-    }
-
-    const vncUrl = instance.vnc.url;
-
-    return `<div class="info-row">
-              <span class="info-label">Tela</span>
-              <div class="url-row">
-                <a href="${vncUrl}" target="_blank" rel="noopener" class="info-value">${domain}</a>
-                <button class="copy-btn" data-url="${vncUrl}" title="Copiar URL da tela">📋</button>
-              </div>
-            </div>`;
-  },
-
-  /** Botão de abrir a tela no card (só o CloakBrowser tem tela própria). */
-  desktopButton(instance) {
-    if (!instance.vnc) return '';
+  desktopButton(instance, url) {
     if (instance.status !== 'running') return '';
+    const target = (instance.vnc && instance.vnc.url) || url;
+    if (!target) return '';
 
-    return `<a class="btn btn-secondary btn-sm" href="${instance.vnc.url}"
+    return `<a class="btn btn-secondary btn-sm" href="${target}"
                target="_blank" rel="noopener">
               <span class="btn-text">🖥 Abrir tela</span>
             </a>`;
   },
 
-  /** Selo do navegador do perfil. */
+  /** Selo do navegador do perfil (texto curto: cabe na linha do título). */
   browserBadge(browser) {
     if (browser === 'brave') {
-      return `<span class="type-badge brave" title="Navegador: Brave">🦁 Brave</span>`;
+      return `<span class="type-badge brave" title="Navegador: Brave">Brave</span>`;
     }
     if (browser === 'cloakbrowser') {
-      return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect)">` +
-        `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ` +
-        `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
-        `<path d="M12 3a7 7 0 0 0-7 7v10l2.5-2L10 20l2-2 2 2 2.5-2L19 20V10a7 7 0 0 0-7-7z"/>` +
-        `<circle cx="9.5" cy="10.5" r="1"/><circle cx="14.5" cy="10.5" r="1"/></svg>` +
-        `CloakBrowser</span>`;
+      return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect)">Cloak</span>`;
     }
-    return `<span class="type-badge chromium" title="Navegador: Chromium">🌀 Chromium</span>`;
+    return `<span class="type-badge chromium" title="Navegador: Chromium">Chromium</span>`;
   },
 
   statusLabel(status) {
@@ -296,11 +267,6 @@ const Instances = {
     // Remove buttons
     document.querySelectorAll('.action-remove').forEach(btn => {
       btn.addEventListener('click', (e) => this.handleRemove(e));
-    });
-
-    // Copy buttons
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this.handleCopy(e));
     });
   },
 
@@ -532,23 +498,6 @@ const Instances = {
         }
       }
     );
-  },
-
-  async handleCopy(e) {
-    const btn = e.currentTarget;
-    const url = btn.dataset.url;
-
-    try {
-      await navigator.clipboard.writeText(url);
-      btn.textContent = '✓';
-      btn.classList.add('copied');
-      setTimeout(() => {
-        btn.textContent = '📋';
-        btn.classList.remove('copied');
-      }, 3000);
-    } catch (err) {
-      App.showToast('Não foi possível copiar a URL', 'error');
-    }
   },
 
   disableControls(disabled) {

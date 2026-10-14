@@ -41,7 +41,7 @@ const EXIT_ALIGN_LATE_DELAYS_MS = [45000, 120000];
 const EXIT_WATCH_INTERVAL_MS = parseInt(process.env.EXIT_WATCH_INTERVAL_MS || '120000', 10);
 const ROW_COLUMNS =
   'id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, ' +
-  'proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id';
+  'proxy_scheme, proxy_auth, proxy_id, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id';
 
 class InstanceService {
   constructor() {
@@ -61,6 +61,14 @@ class InstanceService {
     }
 
     const dbMeta = this._readMetadata();
+    // Geo dos proxies da biblioteca (id → país/cidade/fuso/IP/ISP): o cartão
+    // mostra ONDE o proxy sai, não o endereço dele.
+    let proxyGeo = new Map();
+    try {
+      proxyGeo = proxiesService.geoMap();
+    } catch (err) {
+      proxyGeo = new Map();
+    }
 
     const enriched = await Promise.all(
       instances.map(async (instance) => {
@@ -95,6 +103,9 @@ class InstanceService {
           // licença): é o que o cartão usa para mostrar/trocar.
           cloakEdition: cloakbrowser.editionOf({ cloakEdition: meta && meta.cloak_edition }),
           proxyInfo: type === 'proxy' && meta ? this._proxyInfoFromRow(meta) : null,
+          // Onde o proxy sai (do último teste na biblioteca); null quando o proxy
+          // não está (ou já não está) na biblioteca.
+          proxyGeo: type === 'proxy' && meta ? (proxyGeo.get(meta.proxy_id) || null) : null,
           fingerprint: this._parseJson(meta && meta.fingerprint),
           vpnInfo,
           healthStatus
@@ -140,6 +151,9 @@ class InstanceService {
         scheme: options.proxy.scheme || 'http',
         auth: !!options.proxy.auth
       };
+      // Id na biblioteca: é o que liga a instância à geo do proxy (IP de saída,
+      // cidade, fuso, ISP) mostrada no cartão.
+      config.proxyId = options.proxyId || null;
     } else {
       config.vpnProvider = vpnProvider;
       config.vpnType = 'openvpn';
@@ -345,6 +359,9 @@ class InstanceService {
       domain: DOMAIN,
       type: 'proxy',
       browser: chromeContainer.normalizeBrowser(row.browser),
+      // Id na biblioteca (é o proxy escolhido): fica gravado para o cartão
+      // mostrar a geo da saída.
+      proxyId: proxy.id,
       proxy: {
         host: proxy.host,
         port: proxy.port,
@@ -362,7 +379,7 @@ class InstanceService {
     await dockerService.createInstance(config);
     // A linha precisa já ter o proxy NOVO: `_prepareInstance` e `_ensureForwarder`
     // montam o container e o forwarder a partir dela.
-    this._updateProxyRow(id, config.proxy, fingerprint);
+    this._updateProxyRow(id, config.proxy, fingerprint, config.proxyId);
     await this._ensureForwarder(id);
     await this._prepareInstance(id, { location });
     await dockerService.startInstance(id);
@@ -895,8 +912,8 @@ class InstanceService {
     const isCloak = cloakbrowser.isCloakBrowser(browser);
     getDb().prepare(
       `INSERT OR REPLACE INTO instances
-       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, proxy_id, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       port,
@@ -908,6 +925,7 @@ class InstanceService {
       type === 'proxy' ? config.proxy.pass : null,
       type === 'proxy' ? config.proxy.scheme : 'http',
       type === 'proxy' && config.proxy.auth ? 1 : 0,
+      type === 'proxy' ? (config.proxyId || null) : null,
       JSON.stringify(fingerprint),
       browser,
       type === 'vpn' ? vpnProvider : null,
@@ -917,11 +935,11 @@ class InstanceService {
   }
 
   /** Troca o proxy (e o fingerprint) de uma instância já registrada. */
-  _updateProxyRow(id, proxy, fingerprint) {
+  _updateProxyRow(id, proxy, fingerprint, proxyId) {
     getDb().prepare(
       `UPDATE instances
        SET proxy_host = ?, proxy_port = ?, proxy_user = ?, proxy_pass = ?,
-           proxy_scheme = ?, proxy_auth = ?, fingerprint = ?
+           proxy_scheme = ?, proxy_auth = ?, proxy_id = ?, fingerprint = ?
        WHERE id = ?`
     ).run(
       proxy.host,
@@ -930,6 +948,7 @@ class InstanceService {
       proxy.pass || '',
       proxy.scheme || 'http',
       proxy.auth ? 1 : 0,
+      proxyId || null,
       JSON.stringify(fingerprint),
       id
     );

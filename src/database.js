@@ -109,7 +109,10 @@ function initDatabase() {
     // novo com a chave da biblioteca (é o que permite mais de uma sessão em
     // paralelo — no modo grátis o binário só aceita uma).
     ['cloak_edition', "ALTER TABLE instances ADD COLUMN cloak_edition TEXT DEFAULT 'free'"],
-    ['cloak_license_id', 'ALTER TABLE instances ADD COLUMN cloak_license_id INTEGER']
+    ['cloak_license_id', 'ALTER TABLE instances ADD COLUMN cloak_license_id INTEGER'],
+    // Ligação à biblioteca de proxies: é o que permite mostrar a GEO do proxy
+    // (IP de saída, cidade, fuso, ISP) no cartão, e não só o endereço.
+    ['proxy_id', 'ALTER TABLE instances ADD COLUMN proxy_id INTEGER']
   ];
   for (const [col, sql] of migrations) {
     if (!instanceCols.includes(col)) {
@@ -140,6 +143,21 @@ function initDatabase() {
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_login_attempts_origin ON login_attempts(origin, attempted_at);
     CREATE INDEX IF NOT EXISTS idx_instances_port ON instances(port);
+  `);
+
+  // Liga as instâncias antigas ao proxy da biblioteca que lhes deu origem
+  // (mesmo host/porta/usuário). É o que faz o cartão mostrar a geo do proxy nas
+  // instâncias criadas antes da coluna `proxy_id`. Idempotente.
+  database.exec(`
+    UPDATE instances
+       SET proxy_id = (
+             SELECT p.id FROM proxies p
+              WHERE p.host = instances.proxy_host
+                AND p.port = instances.proxy_port
+                AND COALESCE(p.username, '') = COALESCE(instances.proxy_user, '')
+              LIMIT 1
+           )
+     WHERE proxy_id IS NULL AND proxy_host IS NOT NULL
   `);
 
   // Seed default admin user
