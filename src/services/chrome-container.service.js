@@ -88,6 +88,13 @@ class ChromeContainerService {
     if (proxyServer) flags.push(`--proxy-server=${proxyServer}`);
     if (fingerprint) flags.push(`--load-extension=${EXTENSION_CONTAINER_PATH}`);
 
+    // A página inicial é a MESMA nas três imagens: a constante vive no
+    // cloakbrowser.service (é ele quem monta o comando do CloakBrowser) e aqui
+    // só é reusada, para o Chromium e o Brave abrirem no mesmo lugar. Vai por
+    // último porque uma URL solta no fim do CHROME_CLI/BRAVE_CLI é o que o
+    // wrapper da LinuxServer manda o binário abrir.
+    flags.push(cloakbrowser.HOME_URL);
+
     return flags.join(' ');
   }
 

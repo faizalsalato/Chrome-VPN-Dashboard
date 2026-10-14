@@ -10,6 +10,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Modo Proxy autenticado** — Chrome aponta para um forwarder local que injeta `Proxy-Authorization` (compatível com proxies que exigem usuário/senha, ex.: Bright Data)
 - **Start/Stop/Restart** — Controle individual de cada instância
 - **Escolha de navegador** — Cada instância usa **Chromium**, **Brave** ou **CloakBrowser** (selecionado na criação)
+- **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
 - **Trocar país da VPN** — Recria o container com nova localização
 - **Trocar o proxy (pelo país)** — Numa instância proxy, o botão **País** lista a biblioteca rotulada pelo país de saída do último teste e recria o container com o proxy escolhido (o perfil é realinhado à geo do novo IP)

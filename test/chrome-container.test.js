@@ -3,6 +3,7 @@
  * extensão de fingerprint. É aqui que o fuso/idioma do perfil chegam ao Chrome.
  */
 const chromeContainer = require('../src/services/chrome-container.service');
+const cloakbrowser = require('../src/services/cloakbrowser.service');
 const fingerprintService = require('../src/services/fingerprint.service');
 
 const FINGERPRINT = {
@@ -51,6 +52,15 @@ describe('buildEnv — fuso e idioma vêm do perfil', () => {
     expect(cli).toContain('--load-extension=/config/fp-extension');
     expect(cli).toContain('--no-sandbox');
     expect(cli).not.toContain('--proxy-server');
+  });
+
+  it('abre o Google como página inicial (o mesmo padrão do CloakBrowser)', () => {
+    const cli = cliOf(chromeContainer.buildEnv(vpnConfig()));
+
+    expect(cli).toContain(cloakbrowser.HOME_URL);
+    // A URL vai por ÚLTIMO: é uma URL solta no fim do CHROME_CLI/BRAVE_CLI que
+    // o wrapper da LinuxServer manda o binário abrir.
+    expect(cli.endsWith(cloakbrowser.HOME_URL)).toBe(true);
   });
 
   it('Brave usa BRAVE_CLI e a imagem do Brave', () => {

@@ -111,6 +111,16 @@ describe('comando do container (Chrome com janela no X do container)', () => {
     expect(line.indexOf('port-router.py')).toBeLessThan(line.indexOf('exec /root/.cloakbrowser'));
   });
 
+  it('abre o Google como página inicial (a tela não sobe em branco)', () => {
+    const line = commandLine({ type: 'vpn', fingerprint: FINGERPRINT });
+
+    // Padrão pedido: a tela abre no Google, com caixa de busca à mão.
+    expect(cloakbrowser.HOME_URL).toBe('https://www.google.com/');
+    expect(line).toContain(cloakbrowser.HOME_URL);
+    // `about:blank` era o padrão antigo — tela em branco, sem busca.
+    expect(line).not.toContain('about:blank');
+  });
+
   it('sem proxy não inventa --proxy-server', () => {
     expect(commandLine({ type: 'vpn', fingerprint: FINGERPRINT })).not.toContain('--proxy-server');
   });

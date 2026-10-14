@@ -58,6 +58,18 @@ const CHROME_BINARY = '/root/.cloakbrowser/chromium-*/chrome';
 // Janela = tela cheia do X do container, que nasce no tamanho que o perfil
 // declara (SCREEN_ENV abaixo).
 const WINDOW_FLAG = '--start-maximized';
+// Página inicial — o PADRÃO de todos os navegadores (o chrome-container.service
+// reusa esta mesma constante no CHROME_CLI/BRAVE_CLI, para as três imagens
+// abrirem no mesmo lugar).
+//
+// Antes o binário subia em `about:blank`: a tela abria em branco, sem caixa de
+// busca, e quem entrava na tela não tinha por onde começar. O Google entra como
+// padrão porque é o mesmo endereço que o motor de busca do omnibox usa —
+// digitar na barra ou pesquisar na página levam ao mesmo lugar.
+//
+// Sobrescrevível por BROWSER_HOME_URL (o container é recriado sozinho quando a
+// spec muda, porque o comando entra na comparação de `matchesSpec`).
+const HOME_URL = String(process.env.BROWSER_HOME_URL || '').trim() || 'https://www.google.com/';
 // Tamanho de tela quando o perfil não traz um: o notebook mais comum. É o mesmo
 // padrão do Dockerfile da imagem do navegador (há teste amarrando os dois) e
 // vale tanto para o X quanto para as flags --fingerprint-screen-*.
@@ -280,7 +292,7 @@ class CloakBrowserService {
       `--user-data-dir=${PROFILE_DIR}`,
       WINDOW_FLAG,
       ...this.fingerprintFlags(config),
-      'about:blank'
+      HOME_URL
     ];
     return ['/bin/sh', '-lc', `${this.routerCommand()}\n${parts.join(' ')}`];
   }
@@ -368,3 +380,4 @@ module.exports.SEED_MIN = SEED_MIN;
 module.exports.SEED_MAX = SEED_MAX;
 module.exports.PROFILE_DIR = PROFILE_DIR;
 module.exports.WINDOW_FLAG = WINDOW_FLAG;
+module.exports.HOME_URL = HOME_URL;
