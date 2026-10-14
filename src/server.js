@@ -17,7 +17,10 @@ app.set('trust proxy', 'loopback');
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// O envio de ficheiros para o perfil viaja em base64 no corpo: o limite tem de
+// acompanhar (o padrão do Express é 100 kB). O teto por ficheiro é o mesmo do
+// profile-files.service, para a mensagem de erro bater certo.
+app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Routes

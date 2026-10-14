@@ -179,6 +179,11 @@ const Instances = {
         </div>
         <div class="card-actions">
           ${this.desktopButton(instance, url)}
+          <button class="btn btn-secondary btn-sm action-upload" data-id="${instance.id}"
+                  title="Enviar um ficheiro do seu computador para a pasta Downloads do perfil (para publicar nas redes)">
+            <span class="btn-text">⬆ Enviar</span>
+            <span class="btn-loading"><span class="spinner"></span></span>
+          </button>
           ${startStopBtn}
           <button class="btn btn-secondary btn-sm action-restart" data-id="${instance.id}">
             <span class="btn-text">🔄 Restart</span>
@@ -268,6 +273,11 @@ const Instances = {
     // Remove buttons
     document.querySelectorAll('.action-remove').forEach(btn => {
       btn.addEventListener('click', (e) => this.handleRemove(e));
+    });
+
+    // Upload buttons (ficheiro para o perfil)
+    document.querySelectorAll('.action-upload').forEach(btn => {
+      btn.addEventListener('click', (e) => this.handleUpload(e));
     });
   },
 
@@ -499,6 +509,55 @@ const Instances = {
         }
       }
     );
+  },
+
+  /**
+   * Envia um ficheiro do computador para a pasta de Downloads do perfil.
+   *
+   * Por que existe: ao publicar nas redes, o seletor de ficheiros do site abre o
+   * sistema de ficheiros do CONTAINER (é o navegador do perfil que o mostra), e
+   * não o do computador de quem usa o dashboard. Enviar o ficheiro para lá é o
+   * que o torna escolhível.
+   */
+  handleUpload(e) {
+    const id = e.currentTarget.dataset.id;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.style.display = 'none';
+
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+
+      const maxBytes = 24 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        App.showToast(`Ficheiro maior que ${Math.round(maxBytes / 1024 / 1024)} MB`, 'error');
+        return;
+      }
+
+      const btn = document.querySelector(`.action-upload[data-id="${id}"]`);
+      if (btn) btn.classList.add('loading');
+      try {
+        // A API recebe o conteúdo em base64 (é o que o FileReader dá).
+        const data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+          reader.onerror = () => reject(new Error('Falha ao ler o ficheiro'));
+          reader.readAsDataURL(file);
+        });
+
+        const result = await API.post(`/instances/${id}/files`, { name: file.name, data });
+        App.showToast(result.message || 'Ficheiro enviado', 'success');
+      } catch (err) {
+        App.showToast(err.message || 'Erro ao enviar o ficheiro', 'error');
+      } finally {
+        if (btn) btn.classList.remove('loading');
+      }
+    });
+
+    document.body.appendChild(input);
+    input.click();
   },
 
   disableControls(disabled) {

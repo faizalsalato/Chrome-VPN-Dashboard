@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
 const instanceService = require('../services/instance.service');
+const profileFiles = require('../services/profile-files.service');
 
 // All instance routes require authentication
 router.use(authMiddleware);
@@ -105,6 +106,37 @@ router.post('/', async (req, res, next) => {
         error: 'CreateError',
         message: err.message
       });
+    }
+    next(err);
+  }
+});
+
+// POST /api/instances/:id/files - Envia um ficheiro para a pasta de Downloads do
+// perfil (foto/vídeo que o usuário vai publicar nas redes).
+router.post('/:id/files', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'ID de instância inválido'
+      });
+    }
+
+    const { name, data } = req.body || {};
+    const decoded = profileFiles.decode(data);
+    if (decoded.error) {
+      return res.status(400).json({ error: 'ValidationError', message: decoded.error });
+    }
+
+    const saved = await instanceService.saveFile(id, name, decoded.buffer);
+    res.status(201).json({
+      message: `"${saved.name}" enviado para o perfil (pasta Downloads)`,
+      ...saved
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: 'UploadError', message: err.message });
     }
     next(err);
   }

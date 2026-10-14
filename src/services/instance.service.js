@@ -465,6 +465,29 @@ class InstanceService {
   }
 
   /**
+   * Guarda um ficheiro enviado pelo usuário no perfil da instância.
+   *
+   * O ficheiro vai para a pasta de Downloads do perfil: é o que o seletor de
+   * ficheiros do site abre quando o usuário publica uma foto/vídeo nas redes.
+   *
+   * @returns {Promise<{path: string, name: string, bytes: number}>}
+   */
+  async saveFile(id, name, buffer) {
+    const row = this._rowFor(id);
+    if (!row) {
+      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
+    }
+
+    const browser = chromeContainer.normalizeBrowser(row.browser);
+    const saved = await dockerService.saveProfileFile(id, browser, name, buffer);
+    console.log(
+      `[${new Date().toISOString()}] [INFO] [instance-service] chrome${id}: ficheiro ` +
+      `"${saved.name}" (${saved.bytes} bytes) em ${saved.path}`
+    );
+    return saved;
+  }
+
+  /**
    * Atualiza o binário do CloakBrowser Pro para a versão mais recente do vendor,
    * quando existir.
    *

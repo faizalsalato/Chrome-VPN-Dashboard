@@ -15,6 +15,7 @@ const gluetunContainer = require('./gluetun-container.service');
 const cloakbrowser = require('./cloakbrowser.service');
 const browserImage = require('./browser-image.service');
 const bookmarks = require('./bookmarks.service');
+const profileFiles = require('./profile-files.service');
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -181,7 +182,8 @@ class DockerService {
    */
   async writeContainerFile(id, { root, relativePath, content, uid = 0, gid = 0 }, client = docker) {
     const parts = String(relativePath).split('/').filter(Boolean);
-    const buffer = Buffer.from(content, 'utf-8');
+    // Texto (política, marcadores) ou binário (ficheiro enviado pelo usuário).
+    const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content), 'utf-8');
 
     const pack = tar.pack();
     for (let i = 1; i < parts.length; i++) {
@@ -224,6 +226,29 @@ class DockerService {
     }
 
     return { path: file, added: result.added, skipped: false };
+  }
+
+  /**
+   * Grava um ficheiro enviado pelo usuário na pasta de Downloads do perfil.
+   *
+   * É assim que uma foto/vídeo chega ao container para ser publicado nas redes:
+   * o seletor de ficheiros do site abre o sistema de ficheiros do CONTAINER, e
+   * não o computador de quem usa o dashboard.
+   *
+   * @returns {Promise<{path: string, name: string, bytes: number}>}
+   */
+  async saveProfileFile(id, browser, name, buffer, client = docker) {
+    const target = profileFiles.targetFor(browser, name);
+
+    await this.writeContainerFile(id, {
+      root: target.root,
+      relativePath: target.relativePath,
+      content: buffer,
+      uid: target.uid,
+      gid: target.gid
+    }, client);
+
+    return { path: target.path, name: target.relativePath.split('/').pop(), bytes: buffer.length };
   }
 
   /** Sobe o container do túnel (se existir e estiver parado). */
