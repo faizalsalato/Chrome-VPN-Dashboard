@@ -75,7 +75,12 @@ const CloakLicenses = {
 
   /** Uma linha por chave: pontas da chave + uso/plano/prazo/sessões + remover. */
   _rowHtml(item) {
-    const parts = [item.instances ? `usada por ${item.instances} instância(s)` : 'sem uso'];
+    const parts = [];
+    // Texto curto no selo (a lista inteira não cabe no quadro); a versão longa
+    // fica no title, para nada se perder.
+    parts.push(item.instances
+      ? `${item.instances} instância${item.instances === 1 ? '' : 's'}`
+      : 'sem uso');
     if (item.plan) parts.push(item.plan);
     if (Number.isFinite(item.seatsActive) && Number.isFinite(item.seatsLimit)) {
       parts.push(`${item.seatsActive}/${item.seatsLimit} sessões`);
@@ -86,6 +91,13 @@ const CloakLicenses = {
     const expiry = this._expiry(item.expires);
     if (expiry) parts.push(expiry.label);
 
+    const title = [
+      item.instances ? `usada por ${item.instances} instância(s)` : 'sem uso',
+      item.plan ? `plano ${item.plan}` : null,
+      Number.isFinite(item.seatsLimit) ? `${item.seatsActive}/${item.seatsLimit} sessões em uso` : null,
+      item.expires ? `expira em ${item.expires}` : null
+    ].filter(Boolean).join(' · ');
+
     const classes = ['type-badge'];
     if (expiry && expiry.urgent) classes.push(expiry.expired ? 'expired' : 'expiry-soon');
 
@@ -93,7 +105,7 @@ const CloakLicenses = {
       <div class="cloak-license-row" data-id="${item.id}">
         <div class="cloak-license-info">
           <span class="cloak-license-key">${item.masked}</span>
-          <span class="${classes.join(' ')}">${parts.join(' · ')}</span>
+          <span class="${classes.join(' ')}" title="${title}">${parts.join(' · ')}</span>
         </div>
         <button type="button" class="btn btn-danger btn-sm cloak-license-remove"
                 data-id="${item.id}" data-masked="${item.masked}">Remover</button>
@@ -101,7 +113,7 @@ const CloakLicenses = {
   },
 
   /**
-   * Prazo da chave em texto curto ("expira 17/10/2026 (em 3 dias)").
+   * Prazo da chave em texto curto ("expira 17/10/2026 (3 dias)").
    * `urgent` marca o que está a 7 dias ou menos; `expired`, o que já passou.
    */
   _expiry(iso) {
@@ -111,10 +123,11 @@ const CloakLicenses = {
 
     const day = date.toLocaleDateString('pt-BR');
     const days = Math.ceil((date.getTime() - Date.now()) / 86400000);
-    if (days < 0) return { label: `expirada em ${day}`, urgent: true, expired: true };
+    if (days < 0) return { label: `expirada ${day}`, urgent: true, expired: true };
     if (days === 0) return { label: 'expira hoje', urgent: true, expired: false };
     return {
-      label: `expira ${day} (em ${days} dia${days === 1 ? '' : 's'})`,
+      // Só o prazo curto leva a contagem: "(230 dias)" era só comprimento.
+      label: days <= 30 ? `expira ${day} (${days} dia${days === 1 ? '' : 's'})` : `expira ${day}`,
       urgent: days <= 7,
       expired: false
     };
