@@ -288,24 +288,35 @@ class DockerService {
     };
   }
 
-  async removeInstance(id) {
+  /**
+   * Remove os CONTAINERS de uma instância preservando o volume do perfil.
+   *
+   * É o que a troca de país/proxy precisa: os containers são refeitos do zero
+   * (comando, ambiente, rede), mas a sessão do usuário — cookies, login — fica.
+   * `removeInstance` apaga o volume e serve só para REMOVER a instância.
+   */
+  async removeContainers(id) {
     try {
       await chromeContainer.remove(id);
     } catch (err) {
       console.warn(`[WARN] Erro ao remover chrome${id}:`, err.message);
     }
 
+    try {
+      await gluetunContainer.remove(id);
+    } catch (err) {
+      console.warn(`[WARN] Erro ao remover gluetun${id}:`, err.message);
+    }
+  }
+
+  async removeInstance(id) {
+    await this.removeContainers(id);
+
     // O perfil (cookies/login) morre junto com a instância.
     try {
       await chromeContainer.removeProfileVolume(id);
     } catch (err) {
       console.warn(`[WARN] Erro ao remover o volume do perfil ${id}:`, err.message);
-    }
-
-    try {
-      await gluetunContainer.remove(id);
-    } catch (err) {
-      console.warn(`[WARN] Erro ao remover gluetun${id}:`, err.message);
     }
   }
 

@@ -31,6 +31,7 @@ jest.mock('../src/services/docker.service', () => ({
   startInstance: jest.fn(),
   startVpnContainer: jest.fn(),
   getVpnCountry: jest.fn(),
+  removeContainers: jest.fn(),
   removeInstance: jest.fn(),
   createInstance: jest.fn(),
   getContainerHealth: jest.fn()
@@ -135,7 +136,7 @@ describe('instanceService.changeProxy', () => {
     await instanceService.changeProxy(2, 7);
 
     expect(proxiesService.getWithSecrets).toHaveBeenCalledWith(7);
-    expect(dockerService.removeInstance).toHaveBeenCalledWith(2);
+    expect(dockerService.removeContainers).toHaveBeenCalledWith(2);
 
     const config = dockerService.createInstance.mock.calls[0][0];
     expect(config.type).toBe('proxy');
@@ -174,7 +175,7 @@ describe('instanceService.changeProxy', () => {
     state.row = Object.assign(proxyRow(), { type: 'vpn' });
 
     await expect(instanceService.changeProxy(2, 7)).rejects.toMatchObject({ status: 400 });
-    expect(dockerService.removeInstance).not.toHaveBeenCalled();
+    expect(dockerService.removeContainers).not.toHaveBeenCalled();
     expect(dockerService.createInstance).not.toHaveBeenCalled();
     expect(fingerprintService.inject).not.toHaveBeenCalled();
   });
@@ -183,7 +184,7 @@ describe('instanceService.changeProxy', () => {
     state.row = null;
 
     await expect(instanceService.changeProxy(9, 7)).rejects.toMatchObject({ status: 404 });
-    expect(dockerService.removeInstance).not.toHaveBeenCalled();
+    expect(dockerService.removeContainers).not.toHaveBeenCalled();
   });
 
   it('propaga o 404 quando o proxy escolhido não existe', async () => {
@@ -192,6 +193,12 @@ describe('instanceService.changeProxy', () => {
     });
 
     await expect(instanceService.changeProxy(2, 999)).rejects.toMatchObject({ status: 404 });
+    expect(dockerService.removeContainers).not.toHaveBeenCalled();
+  });
+
+  it('preserva o volume do perfil (a sessão não morre ao trocar de proxy)', async () => {
+    await instanceService.changeProxy(2, 7);
+
     expect(dockerService.removeInstance).not.toHaveBeenCalled();
   });
 });

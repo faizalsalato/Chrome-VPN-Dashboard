@@ -309,7 +309,7 @@ dashboard/
 - `POST /api/instances/:id/start` — Iniciar
 - `POST /api/instances/:id/stop` — Parar
 - `POST /api/instances/:id/restart` — Reiniciar
-- `POST /api/instances/:id/country` — Trocar país (apenas VPN; body: `{ country }`)
+- `POST /api/instances/:id/country` — Trocar país (apenas VPN; body: `{ country }`). Preserva a identidade do perfil (plataforma/tela/GPU) e o volume do perfil (cookies/login): só os containers são refeitos
 - `POST /api/instances/:id/proxy` — Trocar o proxy (apenas instâncias proxy; body: `{ proxyId }`, o id de um proxy da biblioteca — a senha fica no servidor)
 - `GET /api/instances/:id/vpn` — Info VPN/proxy (IP e país de saída)
 

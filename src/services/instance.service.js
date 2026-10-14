@@ -252,11 +252,16 @@ class InstanceService {
       throw Object.assign(new Error('Troca de país disponível apenas para instâncias VPN'), { status: 400 });
     }
 
-    await dockerService.removeInstance(id);
+    // Só os CONTAINERS caem: o volume do perfil (cookies/login) fica. Trocar de
+    // país não pode apagar a sessão do usuário.
+    await dockerService.removeContainers(id);
     await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
 
     const location = await locationResolver.forVpn(country, null);
-    const fingerprint = profileFingerprint.generate(this._seed(id), location);
+    // Relocaliza o perfil que já existe em vez de sortear uma identidade nova:
+    // trocar de país muda idioma/fuso/geo, não a persona (plataforma, tela, GPU).
+    const fingerprint = this._relocatedFingerprint(row, location);
+    this._persistFingerprint(id, fingerprint);
 
     await dockerService.createInstance({
       id,
@@ -310,7 +315,7 @@ class InstanceService {
 
     // O forwarder de autenticação segura o proxy ANTIGO; derruba antes de mexer.
     await this._stopForwarder(id);
-    await dockerService.removeInstance(id);
+    await dockerService.removeContainers(id);
     await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
 
     const config = {
@@ -330,7 +335,7 @@ class InstanceService {
     };
 
     const location = await this._resolveCreateLocation(config);
-    const fingerprint = profileFingerprint.generate(this._seed(id), location);
+    const fingerprint = this._relocatedFingerprint(row, location);
     config.fingerprint = fingerprint;
 
     await dockerService.createInstance(config);
@@ -478,9 +483,25 @@ class InstanceService {
 
     const location = locationHint || (await this._resolveExitWhenReady(row));
     const stored = this._parseJson(row.fingerprint);
-    const { fingerprint, changed } = profileFingerprint.sync(stored, this._seed(id), location);
-    if (!fingerprint) return null;
-    if (!changed) return fingerprint;
+    const synced = profileFingerprint.sync(stored, this._seed(id), location);
+    if (!synced.fingerprint) return null;
+    const changed = synced.changed;
+
+    // O IP de saída também é impressão digital quando ela viaja nas flags do
+    // container (CloakBrowser: `--fingerprint-webrtc-ip`): um IP novo exige
+    // recriar o container, mesmo que a cidade continue a mesma. No Chromium/Brave
+    // quem cobre isso é a extensão, re-injetada sem derrubar a sessão.
+    const ipChanged = this._fingerprintLivesInLaunchFlags(row)
+      && !!location.ip
+      && (stored && stored.geo ? stored.geo.ip : null) !== location.ip;
+
+    if (!changed && !ipChanged) return synced.fingerprint;
+
+    // O `sync` só relocaliza quando país/cidade/fuso mudam: com o MESMO lugar,
+    // um IP novo não passaria por lá — e é ele que alimenta o WebRTC.
+    const fingerprint = (ipChanged && !changed)
+      ? fingerprintService.relocate(synced.fingerprint, location)
+      : synced.fingerprint;
 
     this._persistFingerprint(id, fingerprint);
     console.log(
@@ -500,10 +521,44 @@ class InstanceService {
       // Sem sessão para preservar: recria para o TZ e o --lang ficarem exatos.
       await dockerService.recreateChromeContainer(this._containerConfig(row, fingerprint));
       await dockerService.startInstance(id);
+    } else if (this._fingerprintLivesInLaunchFlags(row)) {
+      // O CloakBrowser não lê extensão: a impressão digital dele vai nas FLAGS
+      // do comando (`--fingerprint-timezone`, `--fingerprint-webrtc-ip`...), que
+      // só mudam recriando o container. Sem isto o perfil seguia com o fuso e o
+      // WebRTC da saída ANTIGA enquanto o IP já era outro — o card mostrava uma
+      // cidade e o navegador anunciava a anterior.
+      await this._recreateForLaunchFlags(id, row, fingerprint);
     }
 
     await this._injectFingerprint(id, fingerprint);
     return fingerprint;
+  }
+
+  /**
+   * A impressão digital deste perfil vive nas flags de lançamento do container?
+   * Só o CloakBrowser é assim: nele não há extensão para re-injetar, então a
+   * única forma de aplicar um alinhamento é recriar o container.
+   */
+  _fingerprintLivesInLaunchFlags(row) {
+    return cloakbrowser.isCloakBrowser(chromeContainer.normalizeBrowser(row.browser));
+  }
+
+  /**
+   * Recria o container para as flags refletirem o perfil atual — mas só quando a
+   * spec mudou de facto (o `ensure` compara comando/ambiente/imagem/rede). Um
+   * alinhamento que não muda nada (mesma cidade, mesmo IP) não reinicia nada.
+   * O volume do perfil fica montado: a sessão (cookies/login) sobrevive; só as
+   * abas abertas caem.
+   *
+   * @returns {Promise<boolean>} true quando o container foi mesmo recriado
+   */
+  async _recreateForLaunchFlags(id, row, fingerprint) {
+    const result = await dockerService.ensureChromeContainer(this._containerConfig(row, fingerprint));
+    if (!result || !result.recreated) return false;
+
+    console.log(`[INFO] [instance-service] Container chrome${id} recriado para a impressão digital seguir o IP atual`);
+    await dockerService.startInstance(id);
+    return true;
   }
 
   /** A localização veio do IP de saída real, e não só do país escolhido? */
@@ -781,6 +836,20 @@ class InstanceService {
     } catch (err) {
       console.warn(`[WARN] [instance-service] Falha ao salvar fingerprint da instância ${id}:`, err.message);
     }
+  }
+
+  /**
+   * Fingerprint do perfil relocalizado para uma saída nova, preservando a
+   * identidade (seed, plataforma, tela, GPU): trocar de país/proxy muda idioma,
+   * fuso e geo — nunca a persona. Sem fingerprint guardado, gera um novo.
+   *
+   * @param {object} row linha da instância (com `fingerprint` e `id`)
+   * @param {object} location localização normalizada da nova saída
+   */
+  _relocatedFingerprint(row, location) {
+    const stored = this._parseJson(row.fingerprint);
+    const synced = profileFingerprint.sync(stored, this._seed(row.id), location);
+    return synced.fingerprint || profileFingerprint.generate(this._seed(row.id), location);
   }
 
   _decorateCreated(instance, config, browser, vpnProvider, fingerprint) {

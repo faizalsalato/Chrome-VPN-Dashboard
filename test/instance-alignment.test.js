@@ -163,6 +163,67 @@ describe('_alignToExit — do fuso do país para o fuso da cidade', () => {
     expect(fingerprintService.inject).toHaveBeenCalledTimes(1);
   });
 
+  it('CloakBrowser: alinhamento sem recriar explícito ainda aplica as flags (só recriando)', async () => {
+    const pais = profileFingerprint.generate('p-fixa', TORONTO);
+    state.row = rowWith(pais, { browser: 'cloakbrowser' });
+    dockerService.isChromeRunning.mockResolvedValue(true);
+    dockerService.ensureChromeContainer.mockResolvedValue({ exists: true, created: true, recreated: true });
+
+    const aligned = await instanceService._alignToExit(2, false);
+
+    expect(aligned.timezone).toBe('America/Vancouver');
+    // A impressão digital do CloakBrowser vai nas FLAGS do comando: sem recriar,
+    // o fuso e o --fingerprint-webrtc-ip ficariam apontando para a saída ANTIGA.
+    expect(dockerService.ensureChromeContainer).toHaveBeenCalledTimes(1);
+    expect(dockerService.ensureChromeContainer.mock.calls[0][0].fingerprint.geo.ip).toBe('84.20.25.99');
+    expect(dockerService.startInstance).toHaveBeenCalledWith(2);
+    // No CloakBrowser não há extensão para injetar.
+    expect(fingerprintService.inject).not.toHaveBeenCalled();
+  });
+
+  it('Chromium: alinhamento sem recriar explícito não toca no container (a extensão cobre)', async () => {
+    state.row = rowWith(profileFingerprint.generate('chrome2', TORONTO));
+    dockerService.isChromeRunning.mockResolvedValue(true);
+
+    await instanceService._alignToExit(2, false);
+
+    expect(dockerService.ensureChromeContainer).not.toHaveBeenCalled();
+    expect(dockerService.recreateChromeContainer).not.toHaveBeenCalled();
+    expect(fingerprintService.inject).toHaveBeenCalledTimes(1);
+  });
+
+  it('CloakBrowser: IP novo na MESMA cidade também recria (o WebRTC vai nas flags)', async () => {
+    // Mesma cidade/fuso, IP de saída diferente: o perfil já está "alinhado",
+    // mas o `--fingerprint-webrtc-ip` apontaria para o IP antigo.
+    const antigo = localeProfile.fromLocation({
+      country: 'Canada', countryCode: 'CA', city: 'Vancouver',
+      region: 'British Columbia', timezone: 'America/Vancouver', ip: '1.1.1.1', source: 'vpn'
+    });
+    state.row = rowWith(profileFingerprint.generate('p-fixa', antigo), { browser: 'cloakbrowser' });
+    dockerService.isChromeRunning.mockResolvedValue(true);
+    dockerService.ensureChromeContainer.mockResolvedValue({ exists: true, created: true, recreated: true });
+
+    await instanceService._alignToExit(2, false);
+
+    expect(dockerService.ensureChromeContainer).toHaveBeenCalledTimes(1);
+    expect(dockerService.ensureChromeContainer.mock.calls[0][0].fingerprint.geo.ip).toBe('84.20.25.99');
+    expect(dockerService.startInstance).toHaveBeenCalledWith(2);
+  });
+
+  it('Chromium: IP novo na mesma cidade não reinicia o browser (a extensão cobre)', async () => {
+    const antigo = localeProfile.fromLocation({
+      country: 'Canada', countryCode: 'CA', city: 'Vancouver',
+      region: 'British Columbia', timezone: 'America/Vancouver', ip: '1.1.1.1', source: 'vpn'
+    });
+    state.row = rowWith(profileFingerprint.generate('chrome2', antigo));
+    dockerService.isChromeRunning.mockResolvedValue(true);
+
+    await instanceService._alignToExit(2, false);
+
+    expect(dockerService.ensureChromeContainer).not.toHaveBeenCalled();
+    expect(dockerService.recreateChromeContainer).not.toHaveBeenCalled();
+  });
+
   it('perfil que já bate com a saída não é mexido', async () => {
     state.row = rowWith(profileFingerprint.generate('chrome2', VANCOUVER));
     dockerService.isChromeRunning.mockResolvedValue(true);
