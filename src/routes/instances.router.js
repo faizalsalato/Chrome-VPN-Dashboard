@@ -20,7 +20,9 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const body = req.body || {};
-    const { country, type = 'vpn', proxy, fingerprint, browser, vpnProvider } = body;
+    const {
+      country, type = 'vpn', proxy, fingerprint, browser, vpnProvider, cloakEdition, proxyId
+    } = body;
 
     if (type !== 'vpn' && type !== 'proxy') {
       return res.status(400).json({
@@ -40,6 +42,13 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({
         error: 'ValidationError',
         message: "Navegador inválido. Use 'chromium', 'brave' ou 'cloakbrowser'"
+      });
+    }
+
+    if (cloakEdition !== undefined && !['free', 'pro'].includes(cloakEdition)) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: "Versão do CloakBrowser inválida. Use 'free' ou 'pro'"
       });
     }
 
@@ -82,7 +91,13 @@ router.post('/', async (req, res, next) => {
       };
     }
 
-    const instance = await instanceService.create({ country, type, proxy: proxyConfig, fingerprint, browser, vpnProvider });
+    // O corpo tem de chegar INTEIRO ao serviço: `cloakEdition` decide se a
+    // instância nasce com chave (a versão "com licença") e `proxyId` liga-a à
+    // geo do proxy que o cartão mostra. Montar o objeto à mão já deixou cair
+    // estes dois campos — a instância nascia "sem licença" sem aviso.
+    const instance = await instanceService.create({
+      country, type, proxy: proxyConfig, fingerprint, browser, vpnProvider, cloakEdition, proxyId
+    });
     res.status(201).json(instance);
   } catch (err) {
     if (err.status) {
