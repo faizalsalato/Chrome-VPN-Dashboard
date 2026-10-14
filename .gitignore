@@ -9,3 +9,14 @@ data/
 .DS_Store
 Thumbs.db
 
+# Scripts de debug/scratch e ficheiros temporários de investigação
+_*.sh
+_jest_out.txt
+_restart1.sh
+# Teste de proxy com credenciais reais — nunca versionar
+proxy-test.js
+# Unit systemd legado/duplicado (usar deploy/chrome-vpn-dashboard.service)
+dashboard.service
+# Dependências do mitm-proxy (node_modules do topo já cobre, redundância segura)
+mitm-proxy/node_modules/
+

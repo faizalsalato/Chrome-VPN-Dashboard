@@ -8,6 +8,11 @@
     "dev": "node --watch src/server.js",
     "test": "jest --coverage"
   },
+  "jest": {
+    "setupFiles": [
+      "<rootDir>/test/setup-env.js"
+    ]
+  },
   "dependencies": {
     "express": "^4.18.2",
     "dockerode": "^4.0.2",
@@ -22,5 +27,20 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/faizalsalato/Chrome-VPN-Dashboard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/faizalsalato/Chrome-VPN-Dashboard/issues"
+  },
+  "homepage": "https://github.com/faizalsalato/Chrome-VPN-Dashboard#readme"
 }

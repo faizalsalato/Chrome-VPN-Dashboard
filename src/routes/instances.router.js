@@ -36,10 +36,10 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    if (browser !== undefined && browser !== 'chromium' && browser !== 'brave') {
+    if (browser !== undefined && !['chromium', 'brave', 'cloakbrowser'].includes(browser)) {
       return res.status(400).json({
         error: 'ValidationError',
-        message: "Navegador inválido. Use 'chromium' ou 'brave'"
+        message: "Navegador inválido. Use 'chromium', 'brave' ou 'cloakbrowser'"
       });
     }
 

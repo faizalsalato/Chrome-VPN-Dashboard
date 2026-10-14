@@ -187,7 +187,9 @@ router.post('/test', async (req, res, next) => {
   }
 });
 
-// POST /api/proxies/:id/test - Testa um proxy já salvo (busca credenciais no banco)
+// POST /api/proxies/:id/test - Testa um proxy já salvo (busca credenciais no banco).
+// Quando o teste responde, a geo do IP de saída fica guardada no proxy: é ela que
+// a tela de criação de instância mostra (o país), sem precisar testar de novo.
 router.post('/:id/test', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -199,6 +201,7 @@ router.post('/:id/test', async (req, res, next) => {
       host: proxy.host, port: proxy.port, scheme: proxy.scheme,
       user: proxy.user, pass: proxy.pass
     });
+    proxiesService.saveGeo(id, result);
     res.json(result);
   } catch (err) {
     if (err.status) {

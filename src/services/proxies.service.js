@@ -13,7 +13,9 @@ class ProxiesService {
   list() {
     const db = getDb();
     const rows = db.prepare(
-      'SELECT id, name, host, port, scheme, auth, username, password, updated_at FROM proxies ORDER BY name'
+      'SELECT id, name, host, port, scheme, auth, username, password, ' +
+      'country, country_code, city, timezone, geo_ip, isp, tested_at, updated_at ' +
+      'FROM proxies ORDER BY name'
     ).all();
     return rows.map(r => ({
       id: r.id,
@@ -24,8 +26,45 @@ class ProxiesService {
       auth: !!r.auth,
       username: r.username || '',
       hasPassword: !!(r.password && r.password.length),
+      // Geo do último teste (a senha nunca é exposta; isto é só o IP de saída).
+      country: r.country || null,
+      countryCode: r.country_code || null,
+      city: r.city || null,
+      timezone: r.timezone || null,
+      geoIp: r.geo_ip || null,
+      isp: r.isp || null,
+      testedAt: r.tested_at || null,
       updatedAt: r.updated_at
     }));
+  }
+
+  /**
+   * Guarda a geo do último teste bem-sucedido de um proxy.
+   * É o que permite mostrar o PAÍS de um proxy salvo sem testá-lo de novo.
+   *
+   * @param {number} id
+   * @param {object} geo resultado do proxy-tester ({ country, countryCode, city, ... })
+   */
+  saveGeo(id, geo) {
+    if (!geo || !geo.live) return { saved: false };
+    const country = geo.country || null;
+    if (!country) return { saved: false };
+
+    getDb().prepare(
+      `UPDATE proxies
+       SET country = ?, country_code = ?, city = ?, timezone = ?, geo_ip = ?, isp = ?,
+           tested_at = datetime('now')
+       WHERE id = ?`
+    ).run(
+      country,
+      geo.countryCode || null,
+      geo.city || null,
+      geo.timezone || null,
+      geo.ip || null,
+      geo.isp || null,
+      id
+    );
+    return { saved: true };
   }
 
   get(id) {

@@ -60,10 +60,8 @@ const Instances = {
       ? `<span class="type-badge proxy">🌐 Proxy</span>`
       : `<span class="type-badge vpn">🔒 VPN</span>`;
 
-    // Badge do navegador do perfil (Chromium ou Brave).
-    const browserBadge = instance.browser === 'brave'
-      ? `<span class="type-badge brave" title="Navegador: Brave">🦁 Brave</span>`
-      : `<span class="type-badge chromium" title="Navegador: Chromium">🌀 Chromium</span>`;
+    // Badge do navegador do perfil (Chromium, Brave ou CloakBrowser).
+    const browserBadge = this.browserBadge(instance.browser);
 
     // Badge do provedor VPN (Surfshark ou ExpressVPN) — só para instâncias VPN.
     const vpnProviderBadge = type !== 'proxy'
@@ -111,6 +109,10 @@ const Instances = {
               <span class="info-label">IP</span>
               <span class="info-value">${vpn.publicIP || 'N/A'}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">Timezone</span>
+              <span class="info-value" title="Fuso do IP de saída">${vpn.timezone || 'N/A'}</span>
+            </div>
           </div>`;
       } else if (vpn && !vpn.connected) {
         vpnSection = `
@@ -131,32 +133,8 @@ const Instances = {
       }
     }
 
-    // Seção de fingerprint (identidade antidetect do perfil, estilo GoLogin).
-    let fpSection = '';
-    const fp = instance.fingerprint;
-    if (fp) {
-      const osLabel = fp.platform
-        ? (fp.platform.startsWith('Win') ? 'Windows'
-          : fp.platform.startsWith('Mac') ? 'macOS'
-          : 'Linux')
-        : 'N/A';
-      const res = fp.screen ? `${fp.screen.width}x${fp.screen.height}` : 'N/A';
-      fpSection = `
-          <div class="proxy-info fp-info">
-            <div class="info-row">
-              <span class="info-label">Fingerprint</span>
-              <span class="info-value">${osLabel} · ${res}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Timezone</span>
-              <span class="info-value">${fp.timezone || 'N/A'}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Idioma</span>
-              <span class="info-value">${fp.language || 'N/A'}</span>
-            </div>
-          </div>`;
-    }
+    // Seção de fingerprint (identidade antidetect + localização do perfil).
+    const fpSection = FingerprintCard.render(instance);
 
     const startStopBtn = instance.status === 'running'
       ? `<button class="btn btn-secondary btn-sm action-stop" data-id="${instance.id}">
@@ -186,17 +164,12 @@ const Instances = {
               <span class="info-label">Porta</span>
               <span class="info-value">${instance.port}</span>
             </div>
-            <div class="info-row">
-              <span class="info-label">URL</span>
-              <div class="url-row">
-                <a href="${url}" target="_blank" rel="noopener" class="info-value">${domain}</a>
-                <button class="copy-btn" data-url="${url}" title="Copiar URL">📋</button>
-              </div>
-            </div>
+            ${this.accessRow(instance, url, domain)}
           </div>
           ${connSection}${vpnSection}${fpSection}
         </div>
         <div class="card-actions">
+          ${this.desktopButton(instance)}
           ${startStopBtn}
           <button class="btn btn-secondary btn-sm action-restart" data-id="${instance.id}">
             <span class="btn-text">🔄 Restart</span>
@@ -212,6 +185,76 @@ const Instances = {
           </button>
         </div>
       </div>`;
+  },
+
+  /**
+   * Linhas de acesso do cartão.
+   *
+   * Chromium/Brave: uma URL só, a área de trabalho deles.
+   *
+   * CloakBrowser: duas. A "Tela" é o cliente do KasmVNC servido pelo próprio
+   * container do navegador; o "CDP" é o endereço que o Playwright e o Puppeteer
+   * usam em `connect_over_cdp` — já com o fingerprint alinhado.
+   */
+  accessRow(instance, url, domain) {
+    if (!instance.cdp) {
+      return `<div class="info-row">
+              <span class="info-label">URL</span>
+              <div class="url-row">
+                <a href="${url}" target="_blank" rel="noopener" class="info-value">${domain}</a>
+                <button class="copy-btn" data-url="${url}" title="Copiar URL">📋</button>
+              </div>
+            </div>`;
+    }
+
+    const vncUrl = instance.vnc ? instance.vnc.url : url;
+
+    return `<div class="info-row">
+              <span class="info-label">Tela</span>
+              <div class="url-row">
+                <a href="${vncUrl}" target="_blank" rel="noopener" class="info-value">${domain}</a>
+                <button class="copy-btn" data-url="${vncUrl}" title="Copiar URL da tela (KasmVNC)">📋</button>
+              </div>
+            </div>
+            <div class="info-row">
+              <span class="info-label">CDP</span>
+              <div class="url-row">
+                <a href="${instance.cdp.discoveryUrl}" target="_blank" rel="noopener" class="info-value">${domain}/json</a>
+                <button class="copy-btn" data-url="${instance.cdp.connectUrl}"
+                        title="Copiar URL de conexão (connect_over_cdp)">📋</button>
+              </div>
+            </div>
+            <p class="cdp-hint">
+              Tela pelo KasmVNC (com área de transferência nos dois sentidos); automação pela URL do
+              <code>CDP</code> em <code>connect_over_cdp()</code>.
+            </p>`;
+  },
+
+  /** Botão de abrir a tela no card (só o CloakBrowser tem tela própria). */
+  desktopButton(instance) {
+    if (!instance.cdp || !instance.vnc) return '';
+    if (instance.status !== 'running') return '';
+
+    return `<a class="btn btn-secondary btn-sm" href="${instance.vnc.url}"
+               target="_blank" rel="noopener">
+              <span class="btn-text">🖥 Abrir tela</span>
+            </a>`;
+  },
+
+  /** Selo do navegador do perfil. */
+  browserBadge(browser) {
+    if (browser === 'brave') {
+      return `<span class="type-badge brave" title="Navegador: Brave">🦁 Brave</span>`;
+    }
+    if (browser === 'cloakbrowser') {
+      return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect por CDP)">` +
+        `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ` +
+        `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+        `<path d="M12 3a7 7 0 0 0-7 7v10l2.5-2L10 20l2-2 2 2 2.5-2L19 20V10a7 7 0 0 0-7-7z"/>` +
+        `<circle cx="9.5" cy="10.5" r="1"/><circle cx="14.5" cy="10.5" r="1"/></svg>` +
+        `CloakBrowser</span>`;
+    }
+    return `<span class="type-badge chromium" title="Navegador: Chromium">🌀 Chromium</span>`;
   },
 
   statusLabel(status) {

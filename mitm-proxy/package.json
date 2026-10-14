@@ -1,0 +1,17 @@
+{
+  "name": "mitm-header-proxy",
+  "version": "1.0.0",
+  "description": "MITM proxy com reescrita de headers HTTP para mascarar ambiente de execução",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "crypto": "^1.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

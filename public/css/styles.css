@@ -498,6 +498,34 @@ a:hover {
   border-color: #fb542b;
 }
 
+/* CloakBrowser: antidetect por CDP (ícone SVG, não emoji) */
+.type-badge.cloakbrowser {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #7b61ff;
+  border-color: #7b61ff;
+}
+
+.type-badge.cloakbrowser .icon {
+  width: 0.95em;
+  height: 0.95em;
+}
+
+/* Aviso curto abaixo do endereço CDP no cartão da instância */
+.cdp-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.cdp-hint code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.95em;
+  color: var(--text-secondary);
+}
+
 .type-badge.chromium {
   color: #4da2ff;
   border-color: #4da2ff;
@@ -514,18 +542,7 @@ a:hover {
   border-color: #00b2ff;
 }
 
-/* Ações por proxy salvo (botão Testar) */
-.proxy-row-actions {
-  margin-top: 0.5rem;
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* Painel de resultado do teste de proxy */
-.proxy-test-result {
-  margin: 0.75rem 0;
-}
-
+/* Resultado do teste de proxy */
 .proxy-test-card {
   border-radius: var(--radius);
   padding: 0.75rem;
@@ -656,8 +673,9 @@ a:hover {
   inset: 0;
   background-color: rgba(0, 0, 0, 0.7);
   display: flex;
-  align-items: center;
+  align-items: flex-start;   /* deixa o diálogo alto rolar em vez de cortar */
   justify-content: center;
+  overflow-y: auto;
   z-index: 1000;
   padding: 1rem;
 }
@@ -673,6 +691,9 @@ a:hover {
   padding: 1.5rem;
   max-width: 400px;
   width: 100%;
+  /* "margin: auto" centraliza quando o diálogo cabe na tela e o mantém
+     rolável quando não cabe (ex.: formulário completo de nova instância). */
+  margin: auto;
 }
 
 .dialog-title {
@@ -1468,3 +1489,643 @@ body {
   }
 }
 
+/* ============================================================
+   Fingerprint: localização da conexão no card da instância
+   ============================================================ */
+
+.fp-info .info-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.fp-info .fp-loc {
+  font-weight: 600;
+}
+
+.fp-sync {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fp-sync-ok {
+  color: var(--success);
+  border-color: var(--success);
+  background-color: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.fp-sync-warn {
+  color: var(--danger);
+  border-color: var(--danger);
+  background-color: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.fp-sync-neutral {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background-color: transparent;
+}
+/* ============================================================
+   Biblioteca de Proxies — página redesenhada
+   (grade de cartões + ações Adicionar / Testar / Testar todos)
+   ============================================================ */
+
+/* Ícones SVG (header dos botões e cartões) */
+.icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 auto;
+}
+
+/* A view de proxies usa o mesmo contêiner/metrica da view de instâncias */
+#view-proxies {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+/* Ações do cabeçalho da view */
+.view-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+/* Linha de progresso ("Testando 2 de 4…") */
+.proxies-status {
+  margin: 0 0 1rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Estado vazio */
+.proxies-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.25rem;
+  padding: 3rem 1.5rem;
+  background-color: var(--bg-secondary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.proxies-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 0.75rem;
+  border-radius: 18px;
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.proxies-empty-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.proxies-empty-title {
+  font-family: 'Quicksand', 'Open Sans', sans-serif;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  color: var(--text-primary);
+}
+
+.proxies-empty-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+/* Grade de cartões */
+.proxies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1.1rem;
+}
+
+/* Cartão */
+.proxy-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.1rem;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  transition: transform 0.2s var(--ease),
+              box-shadow 0.2s var(--ease),
+              border-color 0.2s var(--ease);
+}
+
+/* Fio de destaque no topo do cartão */
+.proxy-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background-image: var(--accent-gradient);
+  opacity: 0.85;
+}
+
+.proxy-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-3);
+  border-color: transparent;
+}
+
+.proxy-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.proxy-card-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.proxy-card-avatar .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.proxy-card-ident {
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-card-name {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-card-addr {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-top: 0.15rem;
+}
+
+/* Endereço em uma linha só: encurta com "…" quando o cartão for estreito */
+.proxy-card-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proxy-card-scheme {
+  flex: 0 0 auto;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.0625rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.proxy-card-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius);
+  background-color: var(--bg-primary);
+}
+
+.proxy-card-user-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+
+.proxy-card-user-value {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  max-width: 64%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Resultado do teste dentro do cartão */
+.proxy-card-result {
+  margin-top: auto;
+}
+
+.proxy-card .proxy-test-card {
+  background-color: var(--bg-primary);
+  padding: 0.7rem 0.75rem;
+}
+
+.proxy-card .proxy-test-grid {
+  grid-template-columns: 1fr;
+  gap: 0.2rem;
+}
+
+.proxy-test-card.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.proxy-test-idle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+  background-color: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.proxy-test-idle .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* Ponto colorido antes de LIVE/MORTO */
+.proxy-test-status::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background-color: currentColor;
+  vertical-align: middle;
+}
+
+.proxy-test-ip {
+  margin: 0.15rem 0 0.5rem;
+  font-family: 'Courier New', monospace;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* Ações do cartão */
+.proxy-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.15rem;
+}
+
+.proxy-card-actions .proxy-card-test {
+  flex: 1;
+}
+
+.proxy-card-remove {
+  min-width: 40px;
+  padding: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.proxy-card-remove .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.proxy-card-remove:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Em dispositivos com mouse o remover só aparece no hover/foco do cartão */
+@media (hover: hover) {
+  .proxy-card-remove {
+    opacity: 0;
+    transition: opacity var(--transition) var(--ease),
+                border-color var(--transition),
+                color var(--transition);
+  }
+
+  .proxy-card:hover .proxy-card-remove,
+  .proxy-card:focus-within .proxy-card-remove {
+    opacity: 1;
+  }
+}
+
+/* Feedback da importação em lote (dentro do modal) */
+.proxies-feedback-box {
+  margin-top: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--bg-primary);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.proxies-feedback-box.ok { border-color: var(--success); }
+.proxies-feedback-box.bad { border-color: var(--danger); }
+
+.proxies-feedback-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: 'Quicksand', 'Open Sans', sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.proxies-feedback-box.ok .proxies-feedback-title { color: var(--success); }
+.proxies-feedback-box.bad .proxies-feedback-title { color: var(--danger); }
+
+.proxies-feedback-title .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.proxies-feedback-detail {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Modal de adicionar proxy ---------- */
+
+.dialog-wide {
+  max-width: 460px;
+}
+
+.dialog-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background-color: var(--bg-primary);
+}
+
+.dialog-tab {
+  flex: 1;
+  min-height: 38px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition) var(--ease),
+              color var(--transition) var(--ease),
+              box-shadow var(--transition) var(--ease);
+}
+
+.dialog-tab:hover:not(.active) {
+  color: var(--text-primary);
+}
+
+.dialog-tab.active {
+  background-image: var(--accent-gradient);
+  color: #fff;
+  box-shadow: 0 6px 14px -8px rgba(64, 153, 255, 0.6);
+}
+
+/* Espaçamento interno dos painéis do modal */
+.dialog-tab-panel > .form-group,
+.dialog-tab-panel > .form-row,
+.dialog-tab-panel > .form-hint {
+  margin-bottom: 0.875rem;
+}
+
+.dialog-tab-panel > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Campos lado a lado (ex.: host + porta) */
+.form-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.form-row > .form-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-row > .form-group-narrow {
+  flex: 0 0 108px;
+}
+
+/* Textarea (lista de proxies) */
+.form-textarea {
+  width: 100%;
+  min-height: 132px;
+  padding: 0.75rem 0.875rem;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color var(--transition) var(--ease),
+              box-shadow var(--transition) var(--ease);
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.form-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---------- Responsivo ---------- */
+
+@media (max-width: 768px) {
+  .proxies-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Empilhado: cada ação ocupa a linha inteira (nada de rótulo em 2 linhas) */
+  .view-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .view-actions .btn {
+    width: 100%;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .form-row > .form-group,
+  .form-row > .form-group-narrow {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .proxy-card-user-value {
+    max-width: 100%;
+  }
+
+  /* Sem hover no toque: o remover fica sempre visível */
+  .proxy-card-remove {
+    min-width: 44px;
+  }
+}
+/* ============================================================
+   País do proxy — aparece no cartão e na escolha da instância
+   ============================================================ */
+
+/* Linha do país no cartão: ocupa a largura toda, abaixo do endereço, para não
+   disputar espaço com o endereço nem com o selo de autenticação. */
+.proxy-card-country-row {
+  display: flex;
+  margin-top: 0.3rem;
+}
+
+/* Selo de país (bandeira + país · cidade), do último teste do proxy */
+.proxy-card-country {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.0625rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.proxy-card-country .proxy-flag {
+  margin-right: 0;
+}
+
+/* Marca do resultado que veio do banco (último teste conhecido) */
+.proxy-test-stored {
+  margin-left: auto;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---------- Resumo do proxy escolhido (modal de nova instância) ---------- */
+
+.proxy-picked {
+  margin-top: 0.25rem;
+}
+
+.proxy-picked-card {
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.proxy-picked-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'Quicksand', 'Open Sans', sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.proxy-picked-country {
+  overflow-wrap: anywhere;
+}
+
+/* No resumo uma coluna só: rótulo à esquerda, valor à direita, sem quebrar. */
+.proxy-picked-card .proxy-test-grid {
+  grid-template-columns: 1fr;
+  gap: 0.15rem;
+}
+
+.proxy-picked-card .info-row {
+  font-size: 0.8125rem;
+  gap: 0.75rem;
+}
+
+.proxy-picked-card .info-label,
+.proxy-picked-card .info-value {
+  white-space: nowrap;
+}
+
+.proxy-picked-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--warning);
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  /* No telefone a fonte do resumo cai um pouco para nada estourar a largura */
+  .proxy-picked-card .info-row {
+    font-size: 0.75rem;
+  }
+}

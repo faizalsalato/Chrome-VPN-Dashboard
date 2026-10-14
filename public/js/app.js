@@ -95,7 +95,7 @@ const App = {
 
     newCancel.addEventListener('click', () => dialog.classList.add('hidden'));
     newConfirm.addEventListener('click', async () => {
-      const payload = this._collectCreatePayload();
+      const payload = await this._collectCreatePayload();
       if (payload === null) {
         // Validation failed (message already shown via toast)
         return;
@@ -160,13 +160,12 @@ const App = {
 
     const browserSel = document.getElementById('instance-browser');
     if (browserSel) browserSel.value = 'chromium';
+    this._syncBrowserHint();
 
-    ['proxy-host', 'proxy-port', 'proxy-user', 'proxy-pass'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-    const authCb = document.getElementById('proxy-auth');
-    if (authCb) authCb.checked = false;
+    // Proxy: só se escolhe um item da biblioteca (nada é digitado aqui).
+    const savedSel = document.getElementById('proxy-saved');
+    if (savedSel) savedSel.value = '';
+    this._showPickedProxy(null);
 
     // Recarrega a biblioteca de proxies no seletor "Proxy salvo"
     ProxiesLib.fillCreateSelect();
@@ -174,7 +173,7 @@ const App = {
     this._applyCreateTypeVisibility('vpn');
   },
 
-  /** Liga os listeners do seletor de tipo e do checkbox de auth (idempotente). */
+  /** Liga os listeners do seletor de tipo e do proxy salvo (idempotente). */
   _setupCreateTypeToggle() {
     const typeSel = document.getElementById('instance-type');
     if (typeSel && !typeSel.dataset.bound) {
@@ -182,66 +181,102 @@ const App = {
       typeSel.addEventListener('change', () => this._applyCreateTypeVisibility(typeSel.value));
     }
 
-    const authCb = document.getElementById('proxy-auth');
-    if (authCb && !authCb.dataset.bound) {
-      authCb.dataset.bound = '1';
-      authCb.addEventListener('change', () => {
-        const creds = document.getElementById('proxy-credentials');
-        if (creds) creds.classList.toggle('hidden', !authCb.checked);
-      });
-    }
-
     const savedSel = document.getElementById('proxy-saved');
     if (savedSel && !savedSel.dataset.bound) {
       savedSel.dataset.bound = '1';
-      savedSel.addEventListener('change', () => ProxiesLib.applySavedToCreate(savedSel.value));
+      savedSel.addEventListener('change', () => ProxiesLib.applySavedPick(savedSel.value));
     }
+
+    // A nota do CDP só interessa quando o navegador escolhido é o CloakBrowser.
+    const browserSel = document.getElementById('instance-browser');
+    if (browserSel && !browserSel.dataset.hintBound) {
+      browserSel.dataset.hintBound = '1';
+      browserSel.addEventListener('change', () => this._syncBrowserHint());
+    }
+  },
+
+  /** Mostra a nota do CDP apenas com o CloakBrowser selecionado. */
+  _syncBrowserHint() {
+    const hint = document.getElementById('browser-cdp-hint');
+    const browserSel = document.getElementById('instance-browser');
+    if (!hint || !browserSel) return;
+    hint.classList.toggle('hidden', browserSel.value !== 'cloakbrowser');
   },
 
   /** Mostra/esconde os grupos VPN e Proxy conforme o tipo selecionado. */
   _applyCreateTypeVisibility(type) {
+    const isProxy = type === 'proxy';
     const vpnGroup = document.getElementById('vpn-country-group');
     const proxyFields = document.getElementById('proxy-fields');
-    if (vpnGroup) vpnGroup.classList.toggle('hidden', type === 'proxy');
-    if (proxyFields) proxyFields.classList.toggle('hidden', type !== 'proxy');
+    if (vpnGroup) vpnGroup.classList.toggle('hidden', isProxy);
+    if (proxyFields) proxyFields.classList.toggle('hidden', !isProxy);
+
+    // Ao entrar em Proxy, garante a lista atual da biblioteca.
+    if (isProxy) {
+      const savedSel = document.getElementById('proxy-saved');
+      if (savedSel && !savedSel.options.length) ProxiesLib.fillCreateSelect();
+    }
+  },
+
+  /**
+   * Desenha o resumo do proxy escolhido (país/cidade/fuso do último teste).
+   * @param {object|null} proxy
+   */
+  _showPickedProxy(proxy) {
+    const box = document.getElementById('proxy-picked');
+    if (!box) return;
+    box.textContent = '';
+    if (!proxy) {
+      box.classList.add('hidden');
+      return;
+    }
+    box.append(ProxyCard.pickSummaryEl(proxy));
+    box.classList.remove('hidden');
   },
 
   /**
    * Monta o payload de criação a partir do formulário.
+   * No caso de proxy, o item escolhido é lido da biblioteca (com a senha),
+   * então nada de host/porta/usuário é digitado nesta tela.
    * Retorna null (com toast de erro) se a validação falhar.
    */
-  _collectCreatePayload() {
+  async _collectCreatePayload() {
     const typeEl = document.getElementById('instance-type');
     const type = typeEl ? typeEl.value : 'vpn';
     const browserEl = document.getElementById('instance-browser');
-    const browser = browserEl && browserEl.value === 'brave' ? 'brave' : 'chromium';
+    // Só os navegadores conhecidos passam; qualquer outro valor cai no Chromium.
+    const browser = browserEl && ['brave', 'cloakbrowser'].includes(browserEl.value)
+      ? browserEl.value
+      : 'chromium';
 
     if (type === 'proxy') {
-      const host = (document.getElementById('proxy-host').value || '').trim();
-      const portRaw = (document.getElementById('proxy-port').value || '').trim();
-      const scheme = document.getElementById('proxy-scheme').value;
-      const auth = document.getElementById('proxy-auth').checked;
-      const user = (document.getElementById('proxy-user').value || '').trim();
-      const pass = document.getElementById('proxy-pass').value || '';
+      const savedSel = document.getElementById('proxy-saved');
+      const proxyId = savedSel ? savedSel.value : '';
+      if (!proxyId) {
+        this.showToast('Escolha um proxy salvo em "Proxy salvo"', 'error');
+        return null;
+      }
 
-      if (!host || !portRaw) {
-        this.showToast('Informe host e porta do proxy', 'error');
-        return null;
-      }
-      const port = parseInt(portRaw, 10);
-      if (isNaN(port) || port < 1 || port > 65535) {
-        this.showToast('Porta de proxy inválida', 'error');
-        return null;
-      }
-      if (auth && (!user || !pass)) {
-        this.showToast('Proxy autenticado requer usuário e senha', 'error');
+      let proxy;
+      try {
+        // Credenciais vêm da biblioteca; a senha nunca passa pelo formulário.
+        proxy = await API.get(`/proxies/${proxyId}/full`);
+      } catch (err) {
+        this.showToast(err.message || 'Erro ao carregar o proxy salvo', 'error');
         return null;
       }
 
       return {
         type: 'proxy',
         browser,
-        proxy: { host, port, scheme, auth, user, pass }
+        proxy: {
+          host: proxy.host,
+          port: proxy.port,
+          scheme: proxy.scheme || 'http',
+          auth: !!proxy.auth,
+          user: proxy.user || '',
+          pass: proxy.pass || ''
+        }
       };
     }
 

@@ -1,48 +1,71 @@
+/**
+ * InstanceService
+ *
+ * Orquestra o ciclo de vida de um perfil: containers (Docker), nginx do
+ * subdomínio e o fingerprint alinhado à localização da conexão.
+ *
+ * Regra central: sempre que a instância vai subir, a localização real da saída
+ * (país/cidade/fuso da VPN ou do proxy) é resolvida e o fingerprint é
+ * re-alinhado a ela. O navegador nunca marca um fuso/idioma diferente do IP.
+ */
 const dockerService = require('./docker.service');
+const instanceDiscovery = require('./instance-discovery.service');
 const nginxService = require('./nginx.service');
 const vpnService = require('./vpn.service');
 const proxyInjector = require('./proxy-injector.service');
 const fingerprintService = require('./fingerprint.service');
+const profileFingerprint = require('./profile-fingerprint.service');
+const locationResolver = require('./location-resolver.service');
+const chromeContainer = require('./chrome-container.service');
+const cloakbrowser = require('./cloakbrowser.service');
 const { getDb } = require('../database');
+const crypto = require('crypto');
 
 const BASE_PORT = parseInt(process.env.BASE_PORT || '3001', 10);
 const MAX_INSTANCES = parseInt(process.env.MAX_INSTANCES || '20', 10);
 const DOMAIN = process.env.DOMAIN || 'sakr.ath.cx';
+const CONTAINER_SETTLE_MS = 2000;
+// O túnel leva dezenas de segundos para revelar o IP de saída. O alinhamento
+// insiste por ~21s e, se ainda não houver IP real, agenda tentativas mais tarde
+// (senão o perfil fica preso no fuso do PAÍS, sem cidade e sem IP).
+const EXIT_ALIGN_ATTEMPTS = 4;
+const EXIT_ALIGN_RETRY_MS = 7000;
+const EXIT_ALIGN_LATE_DELAYS_MS = [45000, 120000];
+// A VPN pode trocar de cidade sozinha numa reconexão. Sem uma checagem
+// periódica o perfil continua marcando o fuso da cidade antiga (o card da
+// instância sinaliza isso como "DIVERGENTE" da saída real). O vigilante só
+// re-injeta a extensão — nunca recria o container — então não derruba a
+// sessão de quem está usando o navegador.
+const EXIT_WATCH_INTERVAL_MS = parseInt(process.env.EXIT_WATCH_INTERVAL_MS || '120000', 10);
+const ROW_COLUMNS =
+  'id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, ' +
+  'proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider';
 
 class InstanceService {
+  constructor() {
+    this._aligning = new Set();   // ids com alinhamento em andamento
+    this._exitWatcher = null;
+  }
+
   async getAll() {
     let dockerConnected = true;
     let instances = [];
 
     try {
-      instances = await dockerService.listInstances();
+      instances = await instanceDiscovery.list();
     } catch (err) {
       dockerConnected = false;
       console.error('[ERROR] [instance-service] Docker inacessível:', err.message);
     }
 
-    // Busca metadados persistidos (tipo + proxy) do banco
-    let dbMeta = {};
-    try {
-      const db = getDb();
-      const rows = db.prepare('SELECT id, type, proxy_host, proxy_port, proxy_user, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider FROM instances').all();
-      for (const r of rows) {
-        dbMeta[r.id] = r;
-      }
-    } catch (err) {
-      // Banco pode não estar pronto; segue só com dados do Docker
-    }
+    const dbMeta = this._readMetadata();
 
-    // Enrich running instances with VPN info
     const enriched = await Promise.all(
       instances.map(async (instance) => {
         const meta = dbMeta[instance.id];
         const type = instance.type || (meta && meta.type) || 'vpn';
         let vpnInfo = null;
-        let healthStatus = {
-          gluetun: 'unknown',
-          chrome: 'unknown'
-        };
+        const healthStatus = { gluetun: 'unknown', chrome: 'unknown' };
 
         if (instance.status === 'running') {
           if (type === 'vpn' && instance.gluetunContainer) {
@@ -59,135 +82,89 @@ class InstanceService {
           healthStatus.chrome = instance.status === 'stopped' ? 'stopped' : 'unknown';
         }
 
-        const proxyInfo = type === 'proxy' && meta
-          ? {
-              host: meta.proxy_host,
-              port: meta.proxy_port,
-              user: meta.proxy_user,
-              scheme: meta.proxy_scheme || 'http',
-              auth: !!meta.proxy_auth
-            }
-          : null;
-
-        let fingerprintInfo = null;
-        if (meta && meta.fingerprint) {
-          try { fingerprintInfo = JSON.parse(meta.fingerprint); } catch (_) { /* ignore */ }
-        }
-
         return {
           ...instance,
           type,
-          browser: (meta && meta.browser) || instance.browser || 'chromium',
-          vpnProvider: (meta && meta.vpn_provider) || instance.vpnProvider || 'surfshark',
-          proxyInfo,
-          fingerprint: fingerprintInfo,
+          browser: (meta && meta.browser) || 'chromium',
+          cdp: this._cdpFor(instance, meta),
+          vnc: this._vncFor(instance, meta),
+          vpnProvider: (meta && meta.vpn_provider) || 'surfshark',
+          proxyInfo: type === 'proxy' && meta ? this._proxyInfoFromRow(meta) : null,
+          fingerprint: this._parseJson(meta && meta.fingerprint),
           vpnInfo,
           healthStatus
         };
       })
     );
 
-    return {
-      instances: enriched,
-      dockerConnected,
-      lastUpdated: new Date().toISOString()
-    };
+    return { instances: enriched, dockerConnected, lastUpdated: new Date().toISOString() };
   }
 
   async create(options = {}) {
-    const { country, type = 'vpn', proxy } = options;
-    const browser = options.browser === 'brave' ? 'brave' : 'chromium';
-    // Provedor VPN: 'surfshark' (padrão) ou 'expressvpn'.
+    const type = options.type === 'proxy' ? 'proxy' : 'vpn';
+    const browser = chromeContainer.normalizeBrowser(options.browser);
     const vpnProvider = options.vpnProvider === 'expressvpn' ? 'expressvpn' : 'surfshark';
     const port = await this.getNextAvailablePort();
     const id = port - BASE_PORT + 1;
 
-    const config = {
-      id,
-      port,
-      domain: DOMAIN,
-      type,
-      browser
-    };
+    const config = { id, port, domain: DOMAIN, type, browser };
 
     if (type === 'proxy') {
       config.proxy = {
-        host: proxy.host,
-        port: proxy.port,
-        user: proxy.user || '',
-        pass: proxy.pass || '',
-        scheme: proxy.scheme || 'http',
-        auth: !!proxy.auth
+        host: options.proxy.host,
+        port: options.proxy.port,
+        user: options.proxy.user || '',
+        pass: options.proxy.pass || '',
+        scheme: options.proxy.scheme || 'http',
+        auth: !!options.proxy.auth
       };
     } else {
-      // Provedor + credenciais pelo banco (fallback interno no docker.service).
       config.vpnProvider = vpnProvider;
       config.vpnType = 'openvpn';
-      config.serverCountries = country || 'United States';
+      config.serverCountries = options.country || 'United States';
     }
 
-    // Fingerprint determinístico por perfil (estilo GoLogin): o mesmo id
-    // sempre gera a mesma identidade. Um objeto parcial em options.fingerprint
-    // sobrescreve campos específicos, mantendo o restante consistente.
-    const fingerprint = Object.assign(
-      fingerprintService.generate(`chrome${id}`),
-      options.fingerprint || {}
-    );
+    // Fingerprint já nasce alinhado à localização de saída (país escolhido na
+    // VPN ou geo real do proxy).
+    //
+    // A semente é ALEATÓRIA e única (não "chrome<id>"): se ela ficasse presa ao
+    // id, o sorteio de plataforma do gerador — que é determinístico por semente
+    // — repetiria o mesmo resultado a cada recriação do mesmo id. Recriar a
+    // instância #1 daria SEMPRE a mesma plataforma (foi o que fazia "aparecer
+    // sempre macOS"). Com uma semente nova a cada create, cada instância sorteia
+    // a sua identidade ao acaso e as recriações variam. Ela fica gravada no
+    // campo `seed` do fingerprint (persistido na coluna da instância), então a
+    // identidade continua estável enquanto a instância existir — restarts,
+    // relocate e troca de país preservam o `seed` guardado e não re-sorteiam.
+    // `options.fingerprint` (redefinição manual pelo usuário) segue tendo
+    // precedência sobre a semente gerada aqui.
+    const location = await this._resolveCreateLocation(config);
+    const fingerprint = profileFingerprint.generate(this._randomSeed(), location, options.fingerprint);
     config.fingerprint = fingerprint;
 
-    // Step 1: Create Docker containers
-    let instance;
-    try {
-      instance = await dockerService.createInstance(config);
-    } catch (err) {
-      throw new Error(`Falha ao criar containers: ${err.message}`);
-    }
+    let instance = await dockerService.createInstance(config);
 
-    // Step 2: Add Nginx server block
     try {
       await nginxService.addServerBlock(instance);
     } catch (err) {
-      // Rollback: remove containers
-      try {
-        await dockerService.removeInstance(id);
-      } catch (rollbackErr) {
-        console.error('[ERROR] Rollback falhou:', rollbackErr.message);
-      }
+      await dockerService.removeInstance(id).catch((removeErr) => {
+        console.error('[ERROR] Rollback falhou:', removeErr.message);
+      });
       throw new Error(`Falha ao configurar Nginx: ${err.message}`);
     }
 
-    // Step 3: Register in database
     try {
-      const db = getDb();
-      db.prepare(`INSERT OR REPLACE INTO instances
-        (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        id,
-        port,
-        `chrome${id}.${DOMAIN}`,
-        type,
-        type === 'proxy' ? config.proxy.host : null,
-        type === 'proxy' ? config.proxy.port : null,
-        type === 'proxy' ? config.proxy.user : null,
-        type === 'proxy' ? config.proxy.pass : null,
-        type === 'proxy' ? config.proxy.scheme : 'http',
-        type === 'proxy' && config.proxy.auth ? 1 : 0,
-        JSON.stringify(fingerprint),
-        browser,
-        type === 'vpn' ? vpnProvider : null
-      );
+      this._insertRow(id, port, type, config, fingerprint, browser, vpnProvider);
     } catch (err) {
-      // Rollback: remove nginx + containers
-      try {
-        await nginxService.removeServerBlock(id);
-        await dockerService.removeInstance(id);
-      } catch (rollbackErr) {
-        console.error('[ERROR] Rollback falhou:', rollbackErr.message);
-      }
+      await nginxService.removeServerBlock(id).catch(() => { /* ignore */ });
+      await dockerService.removeInstance(id).catch(() => { /* ignore */ });
       throw new Error(`Falha ao registrar instância: ${err.message}`);
     }
 
-    // Step 4: Start the instance
+    // Antes de iniciar, confirma a localização real e ajusta o container
+    // (TZ/idioma) para casar com ela.
+    const prepared = await this._prepareInstance(id, { location });
+
     try {
       await dockerService.startInstance(id);
       instance.status = 'running';
@@ -196,15 +173,546 @@ class InstanceService {
       instance.status = 'stopped';
     }
 
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} criada na porta ${port}`);
+    // O túnel acabou de subir: agora dá para resolver a cidade/fuso REAIS da
+    // saída e refinar o perfil. Neste momento o navegador ainda não tem sessão
+    // para perder, então recriar o container é barato.
+    const aligned = await this._alignToExit(id, true).catch((err) => {
+      console.warn(`[WARN] [instance-service] Falha ao alinhar a instância ${id} à saída real:`, err.message);
+      return null;
+    });
 
-    // Enriquece o retorno com proxyInfo (mesmo formato do getAll), para que o
-    // frontend exiba o badge de proxy imediatamente após a criação.
-    instance.browser = browser;
-    instance.vpnProvider = vpnProvider;
-    if (type === 'proxy' && config.proxy) {
-      instance.type = 'proxy';
-      instance.proxyInfo = {
+    // VPN lenta: o perfil ainda está no fuso do país, sem cidade e sem IP.
+    // Agenda novas tentativas para quando o túnel finalmente conectar.
+    if (!aligned || !aligned.geo || !aligned.geo.ip) {
+      this._scheduleExitAlignment(id);
+    }
+
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} criada na porta ${port}`);
+    return this._decorateCreated(instance, config, browser, vpnProvider, aligned || prepared);
+  }
+
+  async remove(id) {
+    await this._stopForwarder(id);
+
+    try {
+      await dockerService.removeInstance(id);
+    } catch (err) {
+      console.warn(`[WARN] Erro ao remover containers da instância ${id}:`, err.message);
+    }
+
+    try {
+      await nginxService.removeServerBlock(id);
+    } catch (err) {
+      console.warn(`[WARN] Erro ao remover config nginx da instância ${id}:`, err.message);
+    }
+
+    getDb().prepare('DELETE FROM instances WHERE id = ?').run(id);
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} removida`);
+  }
+
+  async start(id) {
+    await this._ensureForwarder(id);
+    await this._prepareInstance(id);
+    await dockerService.startInstance(id);
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} iniciada`);
+  }
+
+  async stop(id) {
+    await dockerService.stopInstance(id);
+    await this._stopForwarder(id);
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} parada`);
+  }
+
+  async restart(id) {
+    await dockerService.stopInstance(id);
+    await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
+    await this._ensureForwarder(id);
+    await this._prepareInstance(id);
+    await dockerService.startInstance(id);
+    // O túnel pode ter subido noutra cidade: re-alinha. Aqui a sessão do
+    // usuário é preservada (sem recriar o browser); a extensão re-injetada já
+    // corrige o fuso e o idioma que a página enxerga.
+    await this._alignToExit(id, false).catch((err) => {
+      console.warn(`[WARN] [instance-service] Falha ao re-alinhar a instância ${id}:`, err.message);
+    });
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} reiniciada`);
+  }
+
+  /**
+   * Troca o país da VPN: recria os containers já com o fingerprint do novo
+   * país e, depois de conectar, re-alinha à cidade/fuso reais da saída.
+   */
+  async changeCountry(id, country) {
+    const row = this._rowFor(id);
+    if (!row) {
+      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
+    }
+    if ((row.type || 'vpn') !== 'vpn') {
+      throw Object.assign(new Error('Troca de país disponível apenas para instâncias VPN'), { status: 400 });
+    }
+
+    await dockerService.removeInstance(id);
+    await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
+
+    const location = await locationResolver.forVpn(country, null);
+    const fingerprint = profileFingerprint.generate(this._seed(id), location);
+
+    await dockerService.createInstance({
+      id,
+      port: row.port,
+      domain: DOMAIN,
+      type: 'vpn',
+      browser: chromeContainer.normalizeBrowser(row.browser),
+      vpnProvider: row.vpn_provider || 'surfshark',
+      vpnType: 'openvpn',
+      serverCountries: country,
+      fingerprint
+    });
+
+    await this._prepareInstance(id, { country });
+    await dockerService.startInstance(id);
+    // Containers recém-criados: dá para aplicar o fuso exato da saída.
+    const aligned = await this._alignToExit(id, true).catch((err) => {
+      console.warn(`[WARN] [instance-service] Falha ao alinhar a instância ${id} após trocar de país:`, err.message);
+      return null;
+    });
+
+    // Mesmo caso da criação: se o túnel ainda não deu IP, tenta de novo depois.
+    if (!aligned || !aligned.geo || !aligned.geo.ip) {
+      this._scheduleExitAlignment(id);
+    }
+
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} país alterado para ${country}`);
+  }
+
+  async getVPNInfo(id) {
+    return vpnService.getVPNStatus(`gluetun${id}`);
+  }
+
+  async getNextAvailablePort() {
+    const db = getDb();
+    const countResult = db.prepare('SELECT COUNT(*) as count FROM instances').get();
+    if (countResult.count >= MAX_INSTANCES) {
+      throw Object.assign(new Error(`Limite máximo de ${MAX_INSTANCES} instâncias atingido`), { status: 400 });
+    }
+
+    const usedPorts = db.prepare('SELECT port FROM instances ORDER BY port').all().map((r) => r.port);
+
+    try {
+      const dockerInstances = await instanceDiscovery.list();
+      for (const inst of dockerInstances) {
+        if (inst.port && !usedPorts.includes(inst.port)) usedPorts.push(inst.port);
+      }
+    } catch (err) {
+      // Docker indisponível: decide só com o banco.
+    }
+
+    // Portas já publicadas por QUALQUER container do host — inclusive de outros
+    // apps. Sem isso o dashboard escolhe uma porta ocupada e o Docker falha ao
+    // subir o túnel ("address already in use"), deixando a instância pela metade.
+    try {
+      const published = await dockerService.listPublishedPorts();
+      for (const port of published) {
+        if (!usedPorts.includes(port)) usedPorts.push(port);
+      }
+    } catch (err) {
+      // Sem Docker não há como checar; segue com o que o banco sabe.
+    }
+
+    for (let port = BASE_PORT; port < BASE_PORT + 100; port++) {
+      if (!usedPorts.includes(port)) return port;
+    }
+    throw Object.assign(new Error('Nenhuma porta disponível no intervalo configurado'), { status: 400 });
+  }
+
+  /**
+   * Antes de subir: resolve a localização real de saída, re-alinha o
+   * fingerprint e garante que o container do Chrome tem o TZ/idioma do perfil.
+   *
+   * @param {number} id
+   * @param {object} [hints] { location, country } para evitar trabalho repetido
+   * @returns {Promise<object|null>} fingerprint em uso
+   */
+  async _prepareInstance(id, hints = {}) {
+    const row = this._rowFor(id);
+    if (!row) return null;
+
+    if (row.type !== 'proxy') {
+      // O túnel precisa estar de pé para revelar o IP de saída real.
+      await dockerService.startVpnContainer(id).catch((err) => {
+        console.warn(`[WARN] [instance-service] Falha ao subir gluetun${id}:`, err.message);
+      });
+    }
+
+    // Sem localização já resolvida: espera o túnel revelar o IP real, senão o
+    // perfil ficaria preso no fuso do país (sem cidade e sem IP).
+    const location = hints.location || (await this._resolveExitWhenReady(row, hints.country));
+    const stored = this._parseJson(row.fingerprint);
+    const { fingerprint, changed } = profileFingerprint.sync(stored, this._seed(id), location);
+
+    if (changed && fingerprint) {
+      this._persistFingerprint(id, fingerprint);
+      console.log(
+        `[INFO] [fingerprint] chrome${id} alinhado a ${fingerprint.geo.country}` +
+        `${fingerprint.geo.city ? '/' + fingerprint.geo.city : ''} (${fingerprint.timezone}, ${fingerprint.language})`
+      );
+    }
+
+    if (!fingerprint) return null;
+
+    // O vhost do CloakBrowser é o que separa o CDP (WebSocket) da tela no mesmo
+    // subdomínio: garanti-lo aqui conserta sozinha a instância cujo vhost foi
+    // escrito por uma versão anterior. É idempotente — arquivo igual não é
+    // reescrito nem recarregado.
+    if (cloakbrowser.isCloakBrowser(chromeContainer.normalizeBrowser(row.browser))) {
+      try {
+        await nginxService.addServerBlock({ id: row.id, port: row.port, browser: row.browser });
+      } catch (err) {
+        console.warn(`[WARN] [instance-service] Falha ao garantir o vhost da instância ${id}:`, err.message);
+      }
+    }
+
+    if (!(await dockerService.isChromeRunning(id))) {
+      const config = this._containerConfig(row, fingerprint);
+      const result = await dockerService.ensureChromeContainer(config);
+      if (result.recreated) {
+        console.log(`[INFO] [instance-service] Container chrome${id} recriado (TZ/idioma do perfil mudaram)`);
+      }
+      // A extensão vive no /config do container: re-injeta sempre antes de subir.
+      await this._injectFingerprint(id, fingerprint);
+    } else if (changed) {
+      // O container está no ar e o Docker não troca TZ/idioma sem recriá-lo.
+      // A extensão cobre o que a página enxerga (fuso, idioma, tela), então
+      // re-injetar resolve o alinhamento sem derrubar a sessão do usuário.
+      await this._injectFingerprint(id, fingerprint);
+    }
+
+    return fingerprint;
+  }
+
+  /**
+   * Re-alinha o perfil à localização REAL da saída depois que o túnel subiu.
+   *
+   * É o passo que refina o fuso do país para o fuso da cidade (ex.: um IP em
+   * Vancouver não pode deixar o navegador marcando o horário de Toronto).
+   *
+   * @param {number} id
+   * @param {boolean} recreateIfRunning quando true e o perfil mudou, o
+   *   container do browser é recriado para o TZ/idioma exatos. Só use quando
+   *   não há sessão para perder (instância recém-criada ou país trocado).
+   * @param {object} [locationHint] localização já resolvida pelo chamador
+   * @returns {Promise<object|null>} fingerprint alinhado
+   */
+  async _alignToExit(id, recreateIfRunning = false, locationHint = null) {
+    const row = this._rowFor(id);
+    if (!row) return null;
+
+    const location = locationHint || (await this._resolveExitWhenReady(row));
+    const stored = this._parseJson(row.fingerprint);
+    const { fingerprint, changed } = profileFingerprint.sync(stored, this._seed(id), location);
+    if (!fingerprint) return null;
+    if (!changed) return fingerprint;
+
+    this._persistFingerprint(id, fingerprint);
+    console.log(
+      `[INFO] [fingerprint] chrome${id} re-alinhado à saída real: ` +
+      `${fingerprint.geo.country}${fingerprint.geo.city ? '/' + fingerprint.geo.city : ''} ` +
+      `(${fingerprint.timezone}, ${fingerprint.language}, ip ${fingerprint.geo.ip || '-'})`
+    );
+
+    if (!(await dockerService.isChromeRunning(id))) {
+      const config = this._containerConfig(row, fingerprint);
+      await dockerService.ensureChromeContainer(config);
+      await this._injectFingerprint(id, fingerprint);
+      return fingerprint;
+    }
+
+    if (recreateIfRunning) {
+      // Sem sessão para preservar: recria para o TZ e o --lang ficarem exatos.
+      await dockerService.recreateChromeContainer(this._containerConfig(row, fingerprint));
+      await dockerService.startInstance(id);
+    }
+
+    await this._injectFingerprint(id, fingerprint);
+    return fingerprint;
+  }
+
+  /** A localização veio do IP de saída real, e não só do país escolhido? */
+  _isResolvedExit(location) {
+    return !!(location && location.ip);
+  }
+
+  /**
+   * Insiste até o túnel revelar o IP de saída. Enquanto não revelar, a
+   * localização é só o país escolhido (sem cidade e sem IP) e o perfil sairia
+   * preso no fuso do país — foi assim que a cidade/IP ficaram nulos na UI.
+   */
+  async _resolveExitWhenReady(row, countryHint, attempts = EXIT_ALIGN_ATTEMPTS, waitMs = EXIT_ALIGN_RETRY_MS) {
+    let location = null;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      location = await this._resolveCurrentLocation(row, countryHint);
+      if (this._isResolvedExit(location)) return location;
+      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    return location;
+  }
+
+  /**
+   * Agenda re-alinhamentos tardios para quando a VPN conecta depois do create
+   * responder. Re-injeta a extensão sem recriar o container, para não derrubar
+   * uma sessão que o usuário já tenha aberto.
+   */
+  _scheduleExitAlignment(id, delaysMs = EXIT_ALIGN_LATE_DELAYS_MS) {
+    for (const delay of delaysMs) {
+      const timer = setTimeout(() => {
+        this._alignToExit(id, false).catch((err) => {
+          console.warn(`[WARN] [instance-service] Re-alinhamento tardio da instância ${id} falhou:`, err.message);
+        });
+      }, delay);
+      if (timer.unref) timer.unref();
+    }
+  }
+
+  /**
+   * Vigia a saída das instâncias em execução: a VPN pode reconectar sozinha
+   * noutra cidade e o perfil ficaria marcando o fuso antigo (é o que o card
+   * sinaliza como "DIVERGENTE"). A checagem só re-injeta a extensão, nunca
+   * recria o container, então não derruba a sessão de quem está navegando.
+   */
+  startExitWatcher(intervalMs = EXIT_WATCH_INTERVAL_MS) {
+    if (this._exitWatcher) return this._exitWatcher;
+
+    const timer = setInterval(() => { this._checkExits(); }, intervalMs);
+    if (timer.unref) timer.unref();
+    this._exitWatcher = timer;
+    return timer;
+  }
+
+  stopExitWatcher() {
+    if (this._exitWatcher) clearInterval(this._exitWatcher);
+    this._exitWatcher = null;
+  }
+
+  /** Uma passada do vigilante: alinha só o que está no ar e tem IP real. */
+  async _checkExits() {
+    let rows = [];
+    try {
+      rows = getDb().prepare('SELECT id FROM instances').all();
+    } catch (err) {
+      return; // banco indisponível: tenta no próximo ciclo
+    }
+
+    for (const row of rows) {
+      if (this._aligning.has(row.id)) continue; // ciclo anterior ainda rodando
+
+      this._aligning.add(row.id);
+      try {
+        if (!(await dockerService.isChromeRunning(row.id))) continue;
+
+        const current = this._rowFor(row.id);
+        if (!current) continue;
+
+        const location = await this._resolveCurrentLocation(current);
+        // Sem IP real não dá para saber a cidade: não mexe no perfil.
+        if (!this._isResolvedExit(location)) continue;
+
+        await this._alignToExit(row.id, false, location);
+      } catch (err) {
+        console.warn(`[WARN] [instance-service] Verificação da instância ${row.id} falhou:`, err.message);
+      } finally {
+        this._aligning.delete(row.id);
+      }
+    }
+  }
+
+  /**
+   * Injeta a extensão de fingerprint; falha aqui não derruba a operação.
+   * O CloakBrowser não usa extensão — a impressão digital dele é compilada no
+   * binário e chega pela query da conexão CDP —, então nada é injetado.
+   */
+  async _injectFingerprint(id, fingerprint) {
+    const row = this._rowFor(id);
+    if (row && cloakbrowser.isCloakBrowser(row.browser)) return;
+
+    try {
+      await fingerprintService.inject(`chrome${id}`, fingerprint);
+    } catch (err) {
+      console.warn(`[WARN] [fingerprint] Falha ao injetar em chrome${id}:`, err.message);
+    }
+  }
+
+  /** Localização para uma criação nova. */
+  async _resolveCreateLocation(config) {
+    if (config.type === 'proxy') {
+      const { location, error } = await locationResolver.forProxy(config.proxy);
+      if (error) {
+        console.warn(`[WARN] [instance-service] Proxy sem geo (${error}); perfil neutro`);
+      }
+      return location;
+    }
+    return locationResolver.forVpn(config.serverCountries, null);
+  }
+
+  /** Localização atual de uma instância já existente. */
+  async _resolveCurrentLocation(row, countryHint) {
+    if (row.type === 'proxy') {
+      const { location, error } = await locationResolver.forProxy(this._proxyConfigFromRow(row));
+      if (error) {
+        console.warn(`[WARN] [instance-service] Proxy ${row.id} sem geo (${error}); mantendo perfil`);
+      }
+      return location;
+    }
+
+    const country = countryHint || (await dockerService.getVpnCountry(row.id)) || 'United States';
+    return locationResolver.forVpnConnected(country, `gluetun${row.id}`);
+  }
+
+  /** Config de instância (para o docker.service) a partir da linha do banco. */
+  _containerConfig(row, fingerprint) {
+    return {
+      id: row.id,
+      port: row.port,
+      type: row.type || 'vpn',
+      browser: chromeContainer.normalizeBrowser(row.browser),
+      fingerprint,
+      proxy: row.type === 'proxy' ? this._proxyConfigFromRow(row) : null
+    };
+  }
+
+  _proxyConfigFromRow(row) {
+    return {
+      host: row.proxy_host,
+      port: row.proxy_port,
+      user: row.proxy_user,
+      pass: row.proxy_pass,
+      scheme: row.proxy_scheme || 'http',
+      auth: !!row.proxy_auth
+    };
+  }
+
+  _proxyInfoFromRow(row) {
+    return {
+      host: row.proxy_host,
+      port: row.proxy_port,
+      user: row.proxy_user,
+      scheme: row.proxy_scheme || 'http',
+      auth: !!row.proxy_auth
+    };
+  }
+
+  /**
+   * Bloco CDP das instâncias CloakBrowser (null nos outros navegadores).
+   * É o que o cartão mostra no lugar da URL da área de trabalho: a conexão
+   * Playwright/Puppeteer já com o fingerprint alinhado embutido.
+   */
+  _cdpFor(instance, meta) {
+    const browser = (meta && meta.browser) || 'chromium';
+    if (!cloakbrowser.isCloakBrowser(browser)) return null;
+    const subdomain = instance.subdomain || `chrome${instance.id}.${DOMAIN}`;
+    return cloakbrowser.describe(subdomain, this._parseJson(meta && meta.fingerprint));
+  }
+
+  /**
+   * Bloco da TELA das instâncias CloakBrowser (null nos outros navegadores):
+   * o cliente web do KasmVNC, servido na raiz do MESMO subdomínio — o nginx
+   * separa o que é CDP (que vai para o Chrome) do que é tela.
+   */
+  _vncFor(instance, meta) {
+    const browser = (meta && meta.browser) || 'chromium';
+    if (!cloakbrowser.isCloakBrowser(browser)) return null;
+    const subdomain = instance.subdomain || `chrome${instance.id}.${DOMAIN}`;
+    return { url: cloakbrowser.desktopUrl(subdomain) };
+  }
+
+  /** Inicia o forwarder de autenticação de proxy, se a instância precisar. */
+  async _ensureForwarder(id) {
+    try {
+      const row = this._rowFor(id);
+      if (row && row.type === 'proxy' && row.proxy_auth) {
+        await proxyInjector.start(id, this._proxyConfigFromRow(row));
+      }
+    } catch (err) {
+      console.warn(`[WARN] [instance-service] Falha ao preparar forwarder da instância ${id}:`, err.message);
+    }
+  }
+
+  async _stopForwarder(id) {
+    try {
+      if (proxyInjector.isRunning(id)) await proxyInjector.stop(id);
+    } catch (err) {
+      console.warn(`[WARN] [instance-service] Falha ao parar forwarder da instância ${id}:`, err.message);
+    }
+  }
+
+  _rowFor(id) {
+    try {
+      return getDb().prepare(`SELECT ${ROW_COLUMNS} FROM instances WHERE id = ?`).get(id) || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  _readMetadata() {
+    const meta = {};
+    try {
+      const rows = getDb()
+        .prepare(`SELECT ${ROW_COLUMNS} FROM instances`)
+        .all();
+      for (const row of rows) meta[row.id] = row;
+    } catch (err) {
+      // Banco pode não estar pronto; segue só com os dados do Docker.
+    }
+    return meta;
+  }
+
+  _insertRow(id, port, type, config, fingerprint, browser, vpnProvider) {
+    getDb().prepare(
+      `INSERT OR REPLACE INTO instances
+       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      port,
+      `chrome${id}.${DOMAIN}`,
+      type,
+      type === 'proxy' ? config.proxy.host : null,
+      type === 'proxy' ? config.proxy.port : null,
+      type === 'proxy' ? config.proxy.user : null,
+      type === 'proxy' ? config.proxy.pass : null,
+      type === 'proxy' ? config.proxy.scheme : 'http',
+      type === 'proxy' && config.proxy.auth ? 1 : 0,
+      JSON.stringify(fingerprint),
+      browser,
+      type === 'vpn' ? vpnProvider : null
+    );
+  }
+
+  _persistFingerprint(id, fingerprint) {
+    try {
+      getDb().prepare('UPDATE instances SET fingerprint = ? WHERE id = ?').run(JSON.stringify(fingerprint), id);
+    } catch (err) {
+      console.warn(`[WARN] [instance-service] Falha ao salvar fingerprint da instância ${id}:`, err.message);
+    }
+  }
+
+  _decorateCreated(instance, config, browser, vpnProvider, fingerprint) {
+    const decorated = Object.assign({}, instance, {
+      browser,
+      vpnProvider,
+      fingerprint: fingerprint || config.fingerprint || null
+    });
+
+    // O CloakBrowser responde por dois caminhos: a tela (VNC, no mesmo
+    // subdomínio) e a conexão CDP com o fingerprint alinhado.
+    if (cloakbrowser.isCloakBrowser(browser)) {
+      const subdomain = instance.subdomain || `chrome${config.id}.${DOMAIN}`;
+      decorated.cdp = cloakbrowser.describe(subdomain, decorated.fingerprint);
+      decorated.vnc = { url: cloakbrowser.desktopUrl(subdomain) };
+    }
+
+    if (config.type === 'proxy') {
+      decorated.type = 'proxy';
+      decorated.proxyInfo = {
         host: config.proxy.host,
         port: config.proxy.port,
         user: config.proxy.user,
@@ -212,185 +720,36 @@ class InstanceService {
         auth: config.proxy.auth
       };
     }
-
-    return instance;
+    return decorated;
   }
 
-  async remove(id) {
-    // Libera o forwarder de proxy autenticado, se existir (evita porta órfã).
-    await this._stopForwarder(id);
-
-    // Stop and remove containers
+  _parseJson(value) {
+    if (!value) return null;
     try {
-      await dockerService.removeInstance(id);
+      return JSON.parse(value);
     } catch (err) {
-      console.warn(`[WARN] Erro ao remover containers da instância ${id}:`, err.message);
+      return null;
     }
-
-    // Remove nginx config
-    try {
-      await nginxService.removeServerBlock(id);
-    } catch (err) {
-      console.warn(`[WARN] Erro ao remover config nginx da instância ${id}:`, err.message);
-    }
-
-    // Remove from database
-    const db = getDb();
-    db.prepare('DELETE FROM instances WHERE id = ?').run(id);
-
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} removida`);
   }
 
-  async start(id) {
-    // Para proxy autenticado, garante que o forwarder local (injetor de
-    // Proxy-Authorization) esteja ativo ANTES de iniciar o Chrome.
-    await this._ensureForwarder(id);
-    // Re-injeta a extensão de fingerprint (idempotente) antes do start.
-    await this._ensureFingerprint(id);
-    await dockerService.startInstance(id);
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} iniciada`);
-  }
-
-  async stop(id) {
-    await dockerService.stopInstance(id);
-    // Libera a porta do forwarder quando a instância é parada explicitamente.
-    await this._stopForwarder(id);
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} parada`);
-  }
-
-  async restart(id) {
-    await dockerService.stopInstance(id);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    await this._ensureForwarder(id);
-    await this._ensureFingerprint(id);
-    await dockerService.startInstance(id);
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} reiniciada`);
+  _seed(id) {
+    return `chrome${id}`;
   }
 
   /**
-   * Re-injeta a extensão de fingerprint (com o JSON persistido no banco)
-   * no container chrome. Idempotente: funciona com o container parado.
-   * Falhas são apenas logadas — a instância segue funcionando sem fingerprint.
+   * Semente aleatória e única para o fingerprint de uma instância nova.
+   *
+   * Usa `crypto.randomBytes` (não `Math.random`): o sorteio precisa ser
+   * imprevisível, não reproduzível. O formato (`p-<hex>`) é só um rótulo — o
+   * gerador determinístico por semente (`fingerprint.service`) converte qualquer
+   * string em plataforma/tela/GPU, e o binário do CloakBrowser converte a mesma
+   * semente no `--fingerprint=<seedNumber>`. Guardada em `fingerprint.seed`, é o
+   * que mantém a identidade estável entre reinícios da MESMA instância — mas,
+   * ao contrário de `chrome<id>`, ela muda a cada create, então recriar uma
+   * instância apagada volta a sortear a plataforma em vez de repetir a anterior.
    */
-  async _ensureFingerprint(id) {
-    try {
-      const db = getDb();
-      const row = db.prepare('SELECT fingerprint FROM instances WHERE id = ?').get(id);
-      if (!row || !row.fingerprint) return;
-      const fingerprint = JSON.parse(row.fingerprint);
-      await fingerprintService.inject(`chrome${id}`, fingerprint);
-    } catch (err) {
-      console.warn(`[WARN] [instance-service] Falha ao re-injetar fingerprint da instância ${id}:`, err.message);
-    }
-  }
-
-  /**
-   * Inicia o forwarder de autenticação de proxy (injetor local) se a instância
-   * for do tipo 'proxy' com auth. Usa as credenciais persistidas no banco.
-   */
-  async _ensureForwarder(id) {
-    try {
-      const db = getDb();
-      const row = db.prepare(
-        'SELECT type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth ' +
-        'FROM instances WHERE id = ?'
-      ).get(id);
-      if (row && row.type === 'proxy' && row.proxy_auth) {
-        await proxyInjector.start(id, {
-          host: row.proxy_host,
-          port: row.proxy_port,
-          user: row.proxy_user,
-          pass: row.proxy_pass,
-          scheme: row.proxy_scheme || 'http'
-        });
-      }
-    } catch (err) {
-      console.warn(`[WARN] [instance-service] Falha ao preparar forwarder da instância ${id}:`, err.message);
-    }
-  }
-
-  /** Para o forwarder de proxy autenticado, se existir (idempotente). */
-  async _stopForwarder(id) {
-    try {
-      if (proxyInjector.isRunning(id)) {
-        await proxyInjector.stop(id);
-      }
-    } catch (err) {
-      console.warn(`[WARN] [instance-service] Falha ao parar forwarder da instância ${id}:`, err.message);
-    }
-  }
-
-  async changeCountry(id, country) {
-    // To change country, we need to recreate the gluetun container with new env
-    const db = getDb();
-    const instance = db.prepare('SELECT * FROM instances WHERE id = ?').get(id);
-    if (!instance) {
-      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
-    }
-
-    // Troca de país só se aplica a instâncias VPN
-    if ((instance.type || 'vpn') !== 'vpn') {
-      throw Object.assign(new Error('Troca de país disponível apenas para instâncias VPN'), { status: 400 });
-    }
-
-    // Stop and remove containers
-    await dockerService.removeInstance(id);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Recreate with new country
-    const config = {
-      id,
-      port: instance.port,
-      domain: DOMAIN,
-      type: 'vpn',
-      browser: instance.browser || 'chromium',
-      vpnProvider: instance.vpn_provider || 'surfshark',
-      vpnType: 'openvpn',
-      serverCountries: country
-    };
-
-    await dockerService.createInstance(config);
-    await dockerService.startInstance(id);
-    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} país alterado para ${country}`);
-  }
-
-  async getVPNInfo(id) {
-    const containerName = `gluetun${id}`;
-    return vpnService.getVPNStatus(containerName);
-  }
-
-  async getNextAvailablePort() {
-    const db = getDb();
-
-    // Check instance count limit
-    const countResult = db.prepare('SELECT COUNT(*) as count FROM instances').get();
-    if (countResult.count >= MAX_INSTANCES) {
-      throw Object.assign(new Error(`Limite máximo de ${MAX_INSTANCES} instâncias atingido`), { status: 400 });
-    }
-
-    // Get all used ports from database
-    const usedPorts = db.prepare('SELECT port FROM instances ORDER BY port').all().map(r => r.port);
-
-    // Also check Docker for any containers not in DB
-    try {
-      const dockerInstances = await dockerService.listInstances();
-      for (const inst of dockerInstances) {
-        if (inst.port && !usedPorts.includes(inst.port)) {
-          usedPorts.push(inst.port);
-        }
-      }
-    } catch (err) {
-      // If Docker is unavailable, just use DB data
-    }
-
-    // Find smallest available port in range [BASE_PORT, BASE_PORT + 99]
-    for (let port = BASE_PORT; port < BASE_PORT + 100; port++) {
-      if (!usedPorts.includes(port)) {
-        return port;
-      }
-    }
-
-    throw Object.assign(new Error('Nenhuma porta disponível no intervalo configurado'), { status: 400 });
+  _randomSeed() {
+    return `p-${crypto.randomBytes(6).toString('hex')}`;
   }
 }
 

@@ -3,9 +3,12 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = process.env.NODE_ENV === 'production'
-  ? '/app/data/dashboard.db'
-  : path.join(__dirname, '..', 'data', 'dashboard.db');
+// DATABASE_PATH permite apontar outro arquivo — é o que os testes usam para
+// NÃO tocar no banco do serviço em produção. Sem ele, vale o caminho do ambiente.
+const DB_PATH = process.env.DATABASE_PATH
+  || (process.env.NODE_ENV === 'production'
+    ? '/app/data/dashboard.db'
+    : path.join(__dirname, '..', 'data', 'dashboard.db'));
 
 let db;
 
@@ -64,6 +67,13 @@ function initDatabase() {
       auth INTEGER DEFAULT 0,
       username TEXT,
       password TEXT,
+      country TEXT,
+      country_code TEXT,
+      city TEXT,
+      timezone TEXT,
+      geo_ip TEXT,
+      isp TEXT,
+      tested_at TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -86,6 +96,25 @@ function initDatabase() {
   ];
   for (const [col, sql] of migrations) {
     if (!instanceCols.includes(col)) {
+      database.exec(sql);
+    }
+  }
+
+  // Migration: guarda o resultado de geo do último teste de cada proxy salvo.
+  // É o que permite mostrar o PAÍS de um proxy na hora de criar a instância
+  // (e no próprio cartão) sem precisar testá-lo de novo a cada abertura.
+  const proxyCols = database.prepare('PRAGMA table_info(proxies)').all().map(c => c.name);
+  const proxyMigrations = [
+    ['country', 'ALTER TABLE proxies ADD COLUMN country TEXT'],
+    ['country_code', 'ALTER TABLE proxies ADD COLUMN country_code TEXT'],
+    ['city', 'ALTER TABLE proxies ADD COLUMN city TEXT'],
+    ['timezone', 'ALTER TABLE proxies ADD COLUMN timezone TEXT'],
+    ['geo_ip', 'ALTER TABLE proxies ADD COLUMN geo_ip TEXT'],
+    ['isp', 'ALTER TABLE proxies ADD COLUMN isp TEXT'],
+    ['tested_at', 'ALTER TABLE proxies ADD COLUMN tested_at TEXT']
+  ];
+  for (const [col, sql] of proxyMigrations) {
+    if (!proxyCols.includes(col)) {
       database.exec(sql);
     }
   }

@@ -1,0 +1,28 @@
+[Unit]
+Description=Chrome VPN Dashboard (brave.rota.ath.cx)
+Documentation=https://github.com/faizalsalato/Chrome-VPN-Dashboard
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/chrome-vpn-dashboard
+Environment=PORT=3001
+Environment=DOMAIN=brave.rota.ath.cx
+Environment=BASE_PORT=4001
+Environment=MAX_INSTANCES=20
+Environment=JWT_SECRET=TROQUE-POR-UM-SEGREDO-FORTE
+Environment=SESSION_EXPIRY=86400
+Environment=ADMIN_USER=admin
+Environment=ADMIN_PASS=TROQUE-ESTA-SENHA
+Environment=NGINX_ENABLED=false
+Environment=PROXY_INJECTOR_BASE_PORT=8150
+Environment=CERTBOT_EMAIL=admin@brave.rota.ath.cx
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/chrome-vpn-dashboard.log
+StandardError=append:/var/log/chrome-vpn-dashboard.log
+
+[Install]
+WantedBy=multi-user.target

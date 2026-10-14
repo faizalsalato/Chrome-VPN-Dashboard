@@ -7,6 +7,7 @@ const instancesRouter = require('./routes/instances.router');
 const vpnRouter = require('./routes/vpn.router');
 const proxiesRouter = require('./routes/proxies.router');
 const proxyInjector = require('./services/proxy-injector.service');
+const instanceService = require('./services/instance.service');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -62,9 +63,14 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[${new Date().toISOString()}] [INFO] Domain: ${process.env.DOMAIN || 'sakr.ath.cx'}`);
 });
 
+// Vigia a saída das instâncias em execução: a VPN pode reconectar sozinha
+// noutra cidade, e o perfil precisa acompanhar o IP (sem recriar o navegador).
+instanceService.startExitWatcher();
+
 // Graceful shutdown
 async function shutdown(signal) {
   console.log(`[${new Date().toISOString()}] [INFO] ${signal} recebido. Encerrando...`);
+  instanceService.stopExitWatcher();
   server.close(async () => {
     try {
       await proxyInjector.stopAll();
