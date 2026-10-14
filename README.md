@@ -11,6 +11,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Start/Stop/Restart** — Controle individual de cada instância
 - **Escolha de navegador** — Cada instância usa **Chromium**, **Brave** ou **CloakBrowser** (selecionado na criação)
 - **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
+- **Motor de busca padrão (Google)** — O CloakBrowser não traz o Google na lista de motores que compila (tem Bing/DuckDuckGo/Ecosia): sem motor padrão, escrever uma palavra na barra de endereços **não pesquisa** — ela é tratada como endereço e dá erro de DNS. O container instala o Google por **política gerida** (`/etc/chromium/policies/managed/search.json`), que vale para perfis novos e já existentes (a preferência do perfil é protegida pelo Chromium e é descartada). Muda com `BROWSER_SEARCH_NAME` / `BROWSER_SEARCH_URL`
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
 - **Versão do CloakBrowser por instância** — Cada instância escolhe a versão **antiga (sem chave)** — uma sessão em paralelo — ou a **nova (com licença)**, que usa uma chave da biblioteca. As chaves gerem-se no menu **Chaves CloakBrowser** (várias chaves; cada instância recebe a menos carregada)
 - **Trocar país da VPN** — Recria o container com nova localização
@@ -80,6 +81,9 @@ node src/server.js
 | `CLOAKBROWSER_IMAGE_PRO` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **nova** do CloakBrowser (com licença) |
 | `CLOAKBROWSER_LICENSE_KEY` | (vazio) | **Já não é usada**: a chave passou a ser por instância, guardada na biblioteca (menu *Chaves CloakBrowser*). O ambiente do dashboard não licencia nenhuma instância |
 | `CLOAKBROWSER_FETCH_WIDEVINE` | (vazio) | Baixa o Widevine no container (só quando o perfil precisar de DRM) |
+| `BROWSER_SEARCH_NAME` | `Google` | Nome do motor de busca padrão instalado por política nas instâncias CloakBrowser |
+| `BROWSER_SEARCH_URL` | `https://www.google.com/search?q={searchTerms}` | URL de pesquisa do motor padrão (o `{searchTerms}` é obrigatório) |
+| `BROWSER_SEARCH_SUGGEST_URL` | (sugestões do Google) | URL de sugestões do motor padrão |
 | `VNC_BASE_PORT` | `7001` | Porta base do noVNC no host (cada instância usa `BASE+id-1`) |
 | `VNC_VIEWER_IMAGE` | `chrome-vpn-dashboard-vnc:latest` | Imagem do viewer VNC das instâncias CloakBrowser |
 | `VNC_VIEWER_BASE` | `cloakhq/cloakbrowser:latest` | Imagem base usada no build do viewer |

@@ -46,6 +46,21 @@ const ROUTER_PORT_NUMBER = 9223;
 const ROUTER_SOURCE = path.join(__dirname, '..', 'browser', 'port-router.py');
 const ROUTER_CONTAINER_PATH = '/tmp/port-router.py';
 const ROUTER_END_MARKER = 'PORT_ROUTER_EOF';
+// Política gerida com o MOTOR DE BUSCA padrão.
+//
+// Por que existe: o binário do CloakBrowser não traz o Google na lista de
+// motores prepopulados (tem Bing/DuckDuckGo/Ecosia). Sem um motor padrão, a
+// barra de endereços NÃO pesquisa: trata a palavra como endereço e tenta
+// resolver `http://palavra/` — o que aparece ao usuário como "problema de DNS".
+//
+// Por que por POLÍTICA (e não escrevendo no perfil): as preferências do motor
+// de busca são protegidas pelo Chromium — um valor escrito à mão no perfil é
+// descartado no arranque seguinte (`default_search_provider.reset_occurred`).
+// A política é o caminho suportado e vale para qualquer perfil, novo ou já
+// existente.
+const POLICY_DIR = '/etc/chromium/policies/managed';
+const POLICY_FILE = `${POLICY_DIR}/search.json`;
+const POLICY_END_MARKER = 'SEARCH_POLICY_EOF';
 // Semente padrão do binário (v146) — usada só quando o Docker não responde.
 const FALLBACK_VERSION = '146.0.7680.177';
 // O binário espera um número de 5 dígitos (SEED_MIN/SEED_MAX do wrapper).
@@ -286,10 +301,44 @@ class CloakBrowserService {
   }
 
   /**
-   * Comando do container: primeiro o roteador (CDP + tela), depois o binário do
-   * CloakBrowser lançado direto no X do container. Vai como `sh -lc` porque o
-   * caminho do binário tem a versão no nome (glob) e o entrypoint da imagem faz
-   * `exec "$@"`.
+   * Comando que escreve a política do motor de busca dentro do container.
+   * Mesmo padrão do roteador: heredoc com marcador, para o JSON não sofrer
+   * interpretação pelo shell.
+   */
+  searchPolicyCommand() {
+    return [
+      `mkdir -p ${POLICY_DIR}`,
+      `cat > ${POLICY_FILE} <<'${POLICY_END_MARKER}'`,
+      JSON.stringify(this.searchPolicy()),
+      POLICY_END_MARKER
+    ].join('\n');
+  }
+
+  /**
+   * Conteúdo da política: Google como motor padrão (sobrescrevível por
+   * BROWSER_SEARCH_NAME / BROWSER_SEARCH_URL / BROWSER_SEARCH_SUGGEST_URL).
+   */
+  searchPolicy() {
+    const name = String(process.env.BROWSER_SEARCH_NAME || '').trim() || 'Google';
+    const searchUrl = String(process.env.BROWSER_SEARCH_URL || '').trim()
+      || 'https://www.google.com/search?q={searchTerms}';
+    const suggestUrl = String(process.env.BROWSER_SEARCH_SUGGEST_URL || '').trim()
+      || 'https://www.google.com/complete/search?client=chrome&q={searchTerms}';
+
+    return {
+      DefaultSearchProviderEnabled: true,
+      DefaultSearchProviderName: name,
+      DefaultSearchProviderKeyword: name.toLowerCase(),
+      DefaultSearchProviderSearchURL: searchUrl,
+      DefaultSearchProviderSuggestURL: suggestUrl
+    };
+  }
+
+  /**
+   * Comando do container: primeiro o roteador (CDP + tela), depois a política
+   * do motor de busca, depois o binário do CloakBrowser lançado direto no X do
+   * container. Vai como `sh -lc` porque o caminho do binário tem a versão no
+   * nome (glob) e o entrypoint da imagem faz `exec "$@"`.
    */
   serveCommand(config) {
     const parts = [
@@ -321,7 +370,7 @@ class CloakBrowserService {
       ...this.fingerprintFlags(config),
       HOME_URL
     ];
-    return ['/bin/sh', '-lc', `${this.routerCommand()}\n${parts.join(' ')}`];
+    return ['/bin/sh', '-lc', `${this.routerCommand()}\n${this.searchPolicyCommand()}\n${parts.join(' ')}`];
   }
 
   /**
@@ -406,6 +455,9 @@ module.exports.ROUTER_PORT_NUMBER = ROUTER_PORT_NUMBER;
 module.exports.ROUTER_CONTAINER_PATH = ROUTER_CONTAINER_PATH;
 module.exports.ROUTER_SOURCE = ROUTER_SOURCE;
 module.exports.ROUTER_END_MARKER = ROUTER_END_MARKER;
+module.exports.POLICY_DIR = POLICY_DIR;
+module.exports.POLICY_FILE = POLICY_FILE;
+module.exports.POLICY_END_MARKER = POLICY_END_MARKER;
 module.exports.FALLBACK_VERSION = FALLBACK_VERSION;
 module.exports.SEED_MIN = SEED_MIN;
 module.exports.SEED_MAX = SEED_MAX;

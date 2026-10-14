@@ -187,6 +187,46 @@ describe('comando do container (Chrome com janela no X do container)', () => {
   });
 });
 
+describe('motor de busca padrão (a barra de endereços tem de pesquisar)', () => {
+  it('escreve a política com o Google como motor padrão', () => {
+    const comando = cloakbrowser.searchPolicyCommand();
+
+    expect(comando).toContain(`mkdir -p ${cloakbrowser.POLICY_DIR}`);
+    expect(comando).toContain(`cat > ${cloakbrowser.POLICY_FILE} <<'${cloakbrowser.POLICY_END_MARKER}'`);
+    expect(comando).toContain('"DefaultSearchProviderEnabled":true');
+
+    const politica = cloakbrowser.searchPolicy();
+    expect(politica.DefaultSearchProviderName).toBe('Google');
+    expect(politica.DefaultSearchProviderSearchURL).toBe('https://www.google.com/search?q={searchTerms}');
+  });
+
+  it('a política viaja no comando do container, antes do Chrome arrancar', () => {
+    const script = cloakbrowser.serveCommand({ type: 'vpn', fingerprint: FINGERPRINT })[2];
+
+    expect(script).toContain(cloakbrowser.POLICY_FILE);
+    // O Chrome lê as políticas no arranque: escrever depois não serviria de nada.
+    expect(script.indexOf(cloakbrowser.POLICY_FILE))
+      .toBeLessThan(script.indexOf('exec /root/.cloakbrowser'));
+  });
+
+  it('aceita outro motor por ambiente', () => {
+    const anteriorNome = process.env.BROWSER_SEARCH_NAME;
+    const anteriorUrl = process.env.BROWSER_SEARCH_URL;
+    process.env.BROWSER_SEARCH_NAME = 'DuckDuckGo';
+    process.env.BROWSER_SEARCH_URL = 'https://duckduckgo.com/?q={searchTerms}';
+    try {
+      const politica = cloakbrowser.searchPolicy();
+      expect(politica.DefaultSearchProviderName).toBe('DuckDuckGo');
+      expect(politica.DefaultSearchProviderSearchURL).toBe('https://duckduckgo.com/?q={searchTerms}');
+    } finally {
+      if (anteriorNome === undefined) delete process.env.BROWSER_SEARCH_NAME;
+      else process.env.BROWSER_SEARCH_NAME = anteriorNome;
+      if (anteriorUrl === undefined) delete process.env.BROWSER_SEARCH_URL;
+      else process.env.BROWSER_SEARCH_URL = anteriorUrl;
+    }
+  });
+});
+
 describe('flags de fingerprint (o que alinha o perfil)', () => {
   it('leva semente, fuso, idioma, plataforma, tela e hardware', () => {
     const line = commandLine({ type: 'vpn', fingerprint: FINGERPRINT });
