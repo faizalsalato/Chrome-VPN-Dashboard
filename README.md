@@ -199,6 +199,7 @@ Cada instância VPN usa um dos provedores suportados pelo Gluetun (OpenVPN):
 - **API**: `GET /api/vpn-credentials` (status por provedor) e `PUT /api/vpn-credentials/:provider` (`{"username","password"}`).
 - Na criação: seletor **"Provedor VPN"** (Surfshark/ExpressVPN); o card exibe o selo **Surf** / **Express**.
 - A **troca de país** preserva provedor, navegador e fingerprint.
+- **Nomes de país por provedor**: o gluetun repassa `SERVER_COUNTRIES` ao provedor, e a ExpressVPN usa outros nomes — «United States» é recusado com `the country specified is not valid` e o túnel **não arranca** (a instância parece «não conectar», mesmo com as credenciais certas). O dashboard traduz: `United States → USA`, `United Kingdom → UK`, `India → India (via UK)`. O Surfshark usa os mesmos nomes do dashboard (`src/services/gluetun-container.service.js`).
 
 ## Biblioteca de Proxies (🔌)
 

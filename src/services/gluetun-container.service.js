@@ -13,7 +13,36 @@ const DISPLAY_PORT = '3000/tcp';
 const START_TIMEOUT = 30000;
 const STOP_TIMEOUT = 15000;
 
+/**
+ * Nomes de país que cada provedor espera no `SERVER_COUNTRIES`.
+ *
+ * O dashboard fala sempre o nome "de gente" (United States, United Kingdom),
+ * mas o gluetun repassa a string ao provedor — e alguns provedores usam outros
+ * nomes. Na ExpressVPN a lista é diferente: «United States» é recusado com
+ * "the country specified is not valid" e o túnel **nem arranca** (o container
+ * fica em ciclo de erro, e a instância parece "não conectar"). Os nomes certos
+ * lá são `USA`, `UK` e `India (via UK)`.
+ *
+ * A chave é o nome usado pelo dashboard; o valor, o que o provedor espera.
+ */
+const PROVIDER_COUNTRY_ALIASES = {
+  expressvpn: {
+    'United States': 'USA',
+    'United Kingdom': 'UK',
+    India: 'India (via UK)'
+  }
+};
+
 class GluetunContainerService {
+  /**
+   * País no nome que o provedor entende. Sem alias, o nome segue como está
+   * (Surfshark, por exemplo, usa os mesmos nomes do dashboard).
+   */
+  serverCountry(provider, country) {
+    const wanted = String(country || '').trim() || 'United States';
+    const aliases = PROVIDER_COUNTRY_ALIASES[provider] || {};
+    return aliases[wanted] || wanted;
+  }
   /**
    * @param {object} config
    *   id, port, vpnProvider, openvpnUser, openvpnPassword, serverCountries.
@@ -27,7 +56,7 @@ class GluetunContainerService {
         'VPN_TYPE=openvpn',
         `OPENVPN_USER=${config.openvpnUser}`,
         `OPENVPN_PASSWORD=${config.openvpnPassword}`,
-        `SERVER_COUNTRIES=${config.serverCountries || 'United States'}`
+        `SERVER_COUNTRIES=${this.serverCountry(config.vpnProvider, config.serverCountries)}`
       ],
       HostConfig: {
         CapAdd: ['NET_ADMIN'],
@@ -109,3 +138,4 @@ class GluetunContainerService {
 
 module.exports = new GluetunContainerService();
 module.exports.GLUETUN_IMAGE = GLUETUN_IMAGE;
+module.exports.PROVIDER_COUNTRY_ALIASES = PROVIDER_COUNTRY_ALIASES;
