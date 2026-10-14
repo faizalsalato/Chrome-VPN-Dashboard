@@ -489,10 +489,6 @@ a:hover {
   min-width: 0;
 }
 
-.vpn-info .info-row {
-  font-size: 0.8125rem;
-}
-
 .vpn-status {
   display: flex;
   align-items: center;
@@ -664,10 +660,6 @@ a:hover {
   min-width: 0;
 }
 
-.proxy-info .info-row {
-  font-size: 0.8125rem;
-}
-
 /* Card Actions — grade flexível: os botões quebram para a linha seguinte em vez
    de encolher até o texto ficar ilegível (5 botões num cartão estreito). */
 .card-actions {
@@ -686,6 +678,49 @@ a:hover {
   font-size: 0.8125rem;
   gap: 0.375rem;
   white-space: nowrap;
+}
+
+/* ============================================
+   Cartão da instância — apresentação uniforme dos campos
+   ============================================ */
+
+/* Porta, Tela/URL, VPN, País, IP, Timezone, Fingerprint e Localização passam a
+   usar SEMPRE a mesma linha: mesma altura, mesma tipografia, mesmo alinhamento
+   e o mesmo separador. Antes cada grupo tinha a sua "caixa" própria (fundo
+   escuro + 0.8125rem num, 0.875rem noutro), o que fazia os campos parecerem de
+   telas diferentes dentro do mesmo cartão. */
+.instance-card .card-info,
+.instance-card .vpn-info,
+.instance-card .proxy-info {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+  min-width: 0;
+}
+
+.instance-card .info-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  min-height: 2.125rem;          /* altura idêntica em todos os campos */
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.instance-card .info-label {
+  color: var(--text-secondary);
+}
+
+/* A última linha de cada grupo fecha o bloco — o vão entre grupos
+   (`.card-body`, 0.75rem) é o que separa um assunto do outro. */
+.instance-card .card-info .info-row:last-child,
+.instance-card .vpn-info .info-row:last-child,
+.instance-card .proxy-info .info-row:last-child {
+  border-bottom: none;
 }
 
 /* ============================================

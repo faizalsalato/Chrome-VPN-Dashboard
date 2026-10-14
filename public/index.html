@@ -273,12 +273,12 @@
       </div>
     </div>
 
-    <!-- Change Country Dialog -->
+    <!-- Change Country / Change Proxy Dialog (o mesmo diálogo serve os dois modos) -->
     <div id="country-dialog" class="dialog-overlay hidden">
       <div class="dialog" role="dialog" aria-modal="true">
-        <h2 class="dialog-title">Trocar País da VPN</h2>
+        <h2 id="country-dialog-title" class="dialog-title">Trocar País da VPN</h2>
         <div class="form-group">
-          <label for="change-country-select">Novo País</label>
+          <label id="country-dialog-label" for="change-country-select">Novo País</label>
           <select id="change-country-select" class="form-select">
             <option value="Albania">Albania</option>
             <option value="Algeria">Algeria</option>
@@ -380,6 +380,10 @@
             <option value="Vietnam">Vietnam</option>
           </select>
         </div>
+        <p id="country-dialog-hint" class="form-hint hidden">
+          O país mostrado é onde cada proxy sai (geo do último teste). Para
+          identificar um proxy novo, teste-o na página <strong>Proxies</strong>.
+        </p>
         <div class="dialog-actions">
           <button id="country-cancel" class="btn btn-secondary">Cancelar</button>
           <button id="country-confirm" class="btn btn-primary">Trocar</button>

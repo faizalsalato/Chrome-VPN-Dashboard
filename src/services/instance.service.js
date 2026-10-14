@@ -18,6 +18,7 @@ const profileFingerprint = require('./profile-fingerprint.service');
 const locationResolver = require('./location-resolver.service');
 const chromeContainer = require('./chrome-container.service');
 const cloakbrowser = require('./cloakbrowser.service');
+const proxiesService = require('./proxies.service');
 const { getDb } = require('../database');
 const crypto = require('crypto');
 
@@ -283,6 +284,74 @@ class InstanceService {
     }
 
     console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} país alterado para ${country}`);
+  }
+
+  /**
+   * Troca o proxy de uma instância: recria os containers com o proxy escolhido
+   * na biblioteca e re-alinha o perfil à geo do novo IP de saída.
+   *
+   * É o equivalente do `changeCountry` para instâncias do tipo proxy. A
+   * diferença é que a "localização" de um proxy não se escolhe: é o país de
+   * onde ele sai. Por isso a troca é feita POR PROXY (a UI lista a biblioteca
+   * rotulada pelo país do último teste), e não por um nome de país solto —
+   * dois proxies do mesmo país não saem necessariamente pelo mesmo lugar.
+   */
+  async changeProxy(id, proxyId) {
+    const row = this._rowFor(id);
+    if (!row) {
+      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
+    }
+    if ((row.type || 'vpn') !== 'proxy') {
+      throw Object.assign(new Error('Troca de proxy disponível apenas para instâncias Proxy'), { status: 400 });
+    }
+
+    // Credenciais vêm da biblioteca: a senha nunca passa pelo navegador.
+    const proxy = proxiesService.getWithSecrets(proxyId);
+
+    // O forwarder de autenticação segura o proxy ANTIGO; derruba antes de mexer.
+    await this._stopForwarder(id);
+    await dockerService.removeInstance(id);
+    await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
+
+    const config = {
+      id,
+      port: row.port,
+      domain: DOMAIN,
+      type: 'proxy',
+      browser: chromeContainer.normalizeBrowser(row.browser),
+      proxy: {
+        host: proxy.host,
+        port: proxy.port,
+        user: proxy.user || '',
+        pass: proxy.pass || '',
+        scheme: proxy.scheme || 'http',
+        auth: !!proxy.auth
+      }
+    };
+
+    const location = await this._resolveCreateLocation(config);
+    const fingerprint = profileFingerprint.generate(this._seed(id), location);
+    config.fingerprint = fingerprint;
+
+    await dockerService.createInstance(config);
+    // A linha precisa já ter o proxy NOVO: `_prepareInstance` e `_ensureForwarder`
+    // montam o container e o forwarder a partir dela.
+    this._updateProxyRow(id, config.proxy, fingerprint);
+    await this._ensureForwarder(id);
+    await this._prepareInstance(id, { location });
+    await dockerService.startInstance(id);
+
+    const aligned = await this._alignToExit(id, true).catch((err) => {
+      console.warn(`[WARN] [instance-service] Falha ao alinhar a instância ${id} após trocar o proxy:`, err.message);
+      return null;
+    });
+
+    // Proxy lento: o perfil ainda está sem cidade/IP. Tenta de novo depois.
+    if (!aligned || !aligned.geo || !aligned.geo.ip) {
+      this._scheduleExitAlignment(id);
+    }
+
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} proxy alterado para #${proxy.id}`);
   }
 
   async getVPNInfo(id) {
@@ -684,6 +753,25 @@ class InstanceService {
       JSON.stringify(fingerprint),
       browser,
       type === 'vpn' ? vpnProvider : null
+    );
+  }
+
+  /** Troca o proxy (e o fingerprint) de uma instância já registrada. */
+  _updateProxyRow(id, proxy, fingerprint) {
+    getDb().prepare(
+      `UPDATE instances
+       SET proxy_host = ?, proxy_port = ?, proxy_user = ?, proxy_pass = ?,
+           proxy_scheme = ?, proxy_auth = ?, fingerprint = ?
+       WHERE id = ?`
+    ).run(
+      proxy.host,
+      proxy.port,
+      proxy.user || '',
+      proxy.pass || '',
+      proxy.scheme || 'http',
+      proxy.auth ? 1 : 0,
+      JSON.stringify(fingerprint),
+      id
     );
   }
 

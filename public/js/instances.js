@@ -4,6 +4,9 @@
 const Instances = {
   instances: [],
   dockerConnected: true,
+  // Lista de países da VPN, guardada na 1ª abertura do diálogo de troca (o
+  // mesmo <select> é reaproveitado no modo proxy, com a biblioteca de proxies).
+  _vpnCountries: null,
 
   renderAll(data) {
     this.instances = data.instances || [];
@@ -109,10 +112,6 @@ const Instances = {
               <span class="info-label">IP</span>
               <span class="info-value">${vpn.publicIP || 'N/A'}</span>
             </div>
-            <div class="info-row">
-              <span class="info-label">Timezone</span>
-              <span class="info-value" title="Fuso do IP de saída">${vpn.timezone || 'N/A'}</span>
-            </div>
           </div>`;
       } else if (vpn && !vpn.connected) {
         vpnSection = `
@@ -175,10 +174,11 @@ const Instances = {
             <span class="btn-text">🔄 Restart</span>
             <span class="btn-loading"><span class="spinner"></span></span>
           </button>
-          ${type === 'proxy' ? '' : `<button class="btn btn-secondary btn-sm action-country" data-id="${instance.id}">
+          <button class="btn btn-secondary btn-sm action-country" data-id="${instance.id}" data-type="${type}"
+                  title="${type === 'proxy' ? 'Trocar o proxy (escolha pelo país de saída)' : 'Trocar o país da VPN'}">
             <span class="btn-text">🌍 País</span>
             <span class="btn-loading"><span class="spinner"></span></span>
-          </button>`}
+          </button>
           <button class="btn btn-danger btn-sm action-remove" data-id="${instance.id}">
             <span class="btn-text">🗑 Remover</span>
             <span class="btn-loading"><span class="spinner"></span></span>
@@ -343,9 +343,55 @@ const Instances = {
     }
   },
 
-  handleChangeCountry(e) {
+  /**
+   * Abre o diálogo de troca de saída da instância.
+   *
+   * VPN: escolhe-se o PAÍS do túnel (`POST /instances/:id/country`).
+   * Proxy: não há país a escolher — o país é onde o proxy sai —, então a mesma
+   * tela lista a biblioteca de proxies rotulada pelo país do último teste
+   * (`POST /instances/:id/proxy`). É o "trocar o proxy pelo país".
+   */
+  async handleChangeCountry(e) {
     const id = e.currentTarget.dataset.id;
+    const isProxy = e.currentTarget.dataset.type === 'proxy';
+
     const dialog = document.getElementById('country-dialog');
+    const select = document.getElementById('change-country-select');
+    const title = document.getElementById('country-dialog-title');
+    const label = document.getElementById('country-dialog-label');
+    const hint = document.getElementById('country-dialog-hint');
+
+    // A lista de países da VPN nasce no HTML; guardada na primeira abertura,
+    // volta sempre que o diálogo abre em modo VPN (senão ficava com os proxies).
+    if (!this._vpnCountries) {
+      this._vpnCountries = Array.from(select.options).map(o => ({ value: o.value, text: o.textContent }));
+    }
+
+    if (isProxy) {
+      let proxies = [];
+      try {
+        const data = await API.get('/proxies');
+        proxies = data.proxies || [];
+      } catch (err) {
+        App.showToast(err.message || 'Erro ao carregar a biblioteca de proxies', 'error');
+        return;
+      }
+      if (!proxies.length) {
+        App.showToast('Nenhum proxy cadastrado — adicione no menu Proxies', 'error');
+        return;
+      }
+      this._fillSelect(select, proxies.map(p => ({
+        value: String(p.id),
+        text: typeof ProxyLabel !== 'undefined' ? ProxyLabel.forPick(p) : `#${p.id}`
+      })));
+    } else {
+      this._fillSelect(select, this._vpnCountries);
+    }
+
+    if (title) title.textContent = isProxy ? 'Trocar Proxy' : 'Trocar País da VPN';
+    if (label) label.textContent = isProxy ? 'Proxy (pelo país de saída)' : 'Novo País';
+    if (hint) hint.classList.toggle('hidden', !isProxy);
+
     dialog.classList.remove('hidden');
 
     const cancelBtn = document.getElementById('country-cancel');
@@ -358,21 +404,43 @@ const Instances = {
 
     newCancel.addEventListener('click', () => dialog.classList.add('hidden'));
     newConfirm.addEventListener('click', async () => {
-      const country = document.getElementById('change-country-select').value;
+      const value = select.value;
+      if (!value) {
+        App.showToast('Escolha uma opção para continuar', 'error');
+        return;
+      }
+      const chosen = select.options[select.selectedIndex];
+      const chosenText = chosen ? chosen.textContent : value;
       newConfirm.classList.add('loading');
       newConfirm.disabled = true;
 
       try {
-        await API.post(`/instances/${id}/country`, { country });
-        App.showToast(`País alterado para ${country}. Reiniciando...`, 'success');
+        if (isProxy) {
+          await API.post(`/instances/${id}/proxy`, { proxyId: value });
+          App.showToast(`Proxy alterado para ${chosenText}. Reiniciando...`, 'success');
+        } else {
+          await API.post(`/instances/${id}/country`, { country: value });
+          App.showToast(`País alterado para ${value}. Reiniciando...`, 'success');
+        }
         await Polling.fetchNow();
       } catch (err) {
-        App.showToast(err.message || 'Erro ao trocar país', 'error');
+        App.showToast(err.message || 'Erro ao trocar a saída da instância', 'error');
       } finally {
         dialog.classList.add('hidden');
         newConfirm.classList.remove('loading');
         newConfirm.disabled = false;
       }
+    });
+  },
+
+  /** Troca todas as opções de um <select> de uma vez. */
+  _fillSelect(select, options) {
+    select.textContent = '';
+    options.forEach((o) => {
+      const option = document.createElement('option');
+      option.value = o.value;
+      option.textContent = o.text;
+      select.append(option);
     });
   },
 

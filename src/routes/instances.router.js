@@ -223,6 +223,33 @@ router.post('/:id/country', async (req, res, next) => {
   }
 });
 
+// POST /api/instances/:id/proxy - Troca o proxy de uma instância proxy.
+// O corpo traz o id de um proxy da biblioteca (a senha fica no servidor).
+router.post('/:id/proxy', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'ID de instância inválido'
+      });
+    }
+
+    const proxyId = parseInt(req.body && req.body.proxyId, 10);
+    if (isNaN(proxyId) || proxyId < 1) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'Proxy é obrigatório'
+      });
+    }
+
+    await instanceService.changeProxy(id, proxyId);
+    res.json({ message: `Proxy da instância ${id} alterado` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/instances/:id/vpn - Get VPN info
 router.get('/:id/vpn', async (req, res, next) => {
   try {

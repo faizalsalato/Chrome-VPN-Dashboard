@@ -12,6 +12,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Escolha de navegador** — Cada instância usa **Chromium**, **Brave** ou **CloakBrowser** (selecionado na criação)
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
 - **Trocar país da VPN** — Recria o container com nova localização
+- **Trocar o proxy (pelo país)** — Numa instância proxy, o botão **País** lista a biblioteca rotulada pelo país de saída do último teste e recria o container com o proxy escolhido (o perfil é realinhado à geo do novo IP)
 - **Status em tempo real** — IP público, país (VPN) ou IP de saída do proxy, via geolocalização
 - **HTTPS automático** — Nginx + Let's Encrypt por subdomínio
 - **Autenticação JWT** — Login com rate limiting (5 tentativas/5 min)
@@ -102,7 +103,7 @@ Na criação da instância é possível escolher o navegador. Ambos usam imagens
 
 - **API**: envie `"browser": "brave"` (ou `"chromium"`) no `POST /api/instances`.
 - O **fingerprint** e o **proxy** funcionam idênticos nos dois navegadores (a extensão é injetada em `/config/fp-extension` e carregada com `--load-extension`).
-- A **troca de país da VPN** preserva o navegador escolhido.
+- A **troca de país da VPN** e a **troca de proxy** preservam o navegador escolhido.
 - O card exibe o badge do navegador (🦁 Brave / 🌀 Chromium).
 
 O terceiro navegador (**CloakBrowser**) não segue esse desenho — veja a seção seguinte.
@@ -308,6 +309,7 @@ dashboard/
 - `POST /api/instances/:id/stop` — Parar
 - `POST /api/instances/:id/restart` — Reiniciar
 - `POST /api/instances/:id/country` — Trocar país (apenas VPN; body: `{ country }`)
+- `POST /api/instances/:id/proxy` — Trocar o proxy (apenas instâncias proxy; body: `{ proxyId }`, o id de um proxy da biblioteca — a senha fica no servidor)
 - `GET /api/instances/:id/vpn` — Info VPN/proxy (IP e país de saída)
 
 ## Rodar em Background
