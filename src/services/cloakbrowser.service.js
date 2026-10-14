@@ -68,8 +68,17 @@ const SEED_MIN = 10000;
 const SEED_MAX = 99999;
 // Perfil persistente (cookies/login) montado neste caminho por um volume.
 const PROFILE_DIR = '/profile';
-// Binário baixado pela imagem (a versão muda entre releases: por isso o glob).
+// Binário do CloakBrowser que vem NA IMAGEM (o vendor publicou-o quando a
+// imagem foi construída). É o binário da edição "antiga" (sem chave).
 const CHROME_BINARY = '/root/.cloakbrowser/chromium-*/chrome';
+// Cache do binário MAIS RECENTE, usado pela edição "nova" (com licença).
+//
+// Por que existe: a licença Pro vale para o binário mais recente do vendor, não
+// para o que veio na imagem — o wrapper (`cloakbrowser install`) baixa-o com a
+// chave. O download é pesado, por isso o cache vive num VOLUME partilhado: é
+// feito uma vez e reaproveitado por todas as instâncias e recriações.
+const CACHE_DIR = '/opt/cloak-cache';
+const CACHE_VOLUME = 'cloakbrowser-bin';
 // Janela = tela cheia do X do container, que nasce no tamanho que o perfil
 // declara (SCREEN_ENV abaixo).
 const WINDOW_FLAG = '--start-maximized';
@@ -98,7 +107,10 @@ const SCREEN_ENV = { width: 'SCREEN_WIDTH', height: 'SCREEN_HEIGHT' };
 // biblioteca de chaves), não do ambiente do dashboard — senão a edição "antiga"
 // (sem chave) acabaria licenciada pelo env do serviço.
 const PASSTHROUGH_ENV = [
-  'CLOAKBROWSER_FETCH_WIDEVINE'
+  'CLOAKBROWSER_FETCH_WIDEVINE',
+  // Permitem travar a versão/canal do binário que a edição "nova" baixa.
+  'CLOAKBROWSER_VERSION',
+  'CLOAKBROWSER_RELEASE_CHANNEL'
 ];
 // Campos do fingerprint que viram `--fingerprint-<nome>=<valor>`.
 // O `cloakserve` faz exatamente este mapeamento nas conexões CDP; aqui as
@@ -335,15 +347,41 @@ class CloakBrowserService {
   }
 
   /**
+   * Passo que garante o binário MAIS RECENTE (só na edição "nova").
+   *
+   * A imagem traz o binário publicado quando ela foi construída; a licença Pro
+   * vale para o binário mais recente, que o wrapper baixa com a chave. O
+   * download acontece uma vez (o cache está num volume) e, se falhar — chave
+   * inválida, rede, etc. —, o binário da imagem é usado na mesma: o perfil
+   * nunca fica sem navegador.
+   */
+  installCommand() {
+    return [
+      `CLOAKBROWSER_CACHE_DIR=${CACHE_DIR} cloakbrowser install >/tmp/cloak-install.log 2>&1` +
+        ` || echo "[WARN] install do binario mais recente falhou (ver /tmp/cloak-install.log)"`,
+      `CLOAK_BIN=$(ls -d ${CACHE_DIR}/chromium-*/chrome 2>/dev/null | sort -V | tail -1)`,
+      `[ -x "$CLOAK_BIN" ] || CLOAK_BIN=$(ls -d ${CHROME_BINARY} | sort -V | tail -1)`,
+      `echo "[INFO] binario do CloakBrowser: $CLOAK_BIN"`
+    ].join('\n');
+  }
+
+  /** Bind do volume do cache de binários (edição "nova"). */
+  cacheBind() {
+    return `${CACHE_VOLUME}:${CACHE_DIR}`;
+  }
+
+  /**
    * Comando do container: primeiro o roteador (CDP + tela), depois a política
-   * do motor de busca, depois o binário do CloakBrowser lançado direto no X do
-   * container. Vai como `sh -lc` porque o caminho do binário tem a versão no
-   * nome (glob) e o entrypoint da imagem faz `exec "$@"`.
+   * do motor de busca, depois (na edição "nova") o binário mais recente, e por
+   * fim o binário lançado direto no X do container. Vai como `sh -lc` porque o
+   * caminho do binário tem a versão no nome (glob) e o entrypoint da imagem faz
+   * `exec "$@"`.
    */
   serveCommand(config) {
+    const pro = this.editionOf(config) === 'pro';
     const parts = [
       'exec',
-      CHROME_BINARY,
+      pro ? '"$CLOAK_BIN"' : CHROME_BINARY,
       '--no-sandbox',
       // Esconde o infobar amarelo "You are using an unsupported command-line
       // flag: --no-sandbox" que o Chromium mostra em modo headed. É obrigatório
@@ -370,7 +408,11 @@ class CloakBrowserService {
       ...this.fingerprintFlags(config),
       HOME_URL
     ];
-    return ['/bin/sh', '-lc', `${this.routerCommand()}\n${this.searchPolicyCommand()}\n${parts.join(' ')}`];
+    const steps = [this.routerCommand(), this.searchPolicyCommand()];
+    // A edição "nova" precisa do binário mais recente antes de arrancar.
+    if (pro) steps.push(this.installCommand());
+    steps.push(parts.join(' '));
+    return ['/bin/sh', '-lc', steps.join('\n')];
   }
 
   /**
@@ -384,6 +426,11 @@ class CloakBrowserService {
     for (const name of PASSTHROUGH_ENV) {
       const value = process.env[name];
       if (value) env.push(`${name}=${value}`);
+    }
+    // A edição "nova" guarda o binário mais recente num cache partilhado (é o
+    // que faz o download acontecer uma vez, não a cada recriação).
+    if (this.editionOf(config) === 'pro') {
+      env.push(`CLOAKBROWSER_CACHE_DIR=${CACHE_DIR}`);
     }
     // Chave da edição "nova": vem da biblioteca de chaves, uma por instância.
     // Sem chave o binário arranca no modo grátis (uma sessão em paralelo).
@@ -458,6 +505,9 @@ module.exports.ROUTER_END_MARKER = ROUTER_END_MARKER;
 module.exports.POLICY_DIR = POLICY_DIR;
 module.exports.POLICY_FILE = POLICY_FILE;
 module.exports.POLICY_END_MARKER = POLICY_END_MARKER;
+module.exports.CHROME_BINARY = CHROME_BINARY;
+module.exports.CACHE_DIR = CACHE_DIR;
+module.exports.CACHE_VOLUME = CACHE_VOLUME;
 module.exports.FALLBACK_VERSION = FALLBACK_VERSION;
 module.exports.SEED_MIN = SEED_MIN;
 module.exports.SEED_MAX = SEED_MAX;

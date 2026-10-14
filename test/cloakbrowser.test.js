@@ -166,6 +166,30 @@ describe('comando do container (Chrome com janela no X do container)', () => {
     expect(line).not.toContain('about:blank');
   });
 
+  it('a edição "nova" baixa o binário mais recente para o cache partilhado', () => {
+    const pro = { type: 'vpn', fingerprint: FINGERPRINT, cloakEdition: 'pro', cloakLicenseKey: 'chave' };
+    const script = cloakbrowser.serveCommand(pro)[2];
+
+    // O install corre antes do Chrome e escreve no cache do volume...
+    expect(script).toContain(`CLOAKBROWSER_CACHE_DIR=${cloakbrowser.CACHE_DIR}`);
+    expect(script).toContain('cloakbrowser install');
+    expect(script).toContain(`CLOAK_BIN=$(ls -d ${cloakbrowser.CACHE_DIR}/chromium-*/chrome`);
+    // ...e o binário lançado é o do cache (com queda para o da imagem).
+    expect(script).toContain('exec "$CLOAK_BIN"');
+
+    expect(cloakbrowser.containerEnv(pro)).toContain(`CLOAKBROWSER_CACHE_DIR=${cloakbrowser.CACHE_DIR}`);
+    expect(cloakbrowser.cacheBind()).toBe(`${cloakbrowser.CACHE_VOLUME}:${cloakbrowser.CACHE_DIR}`);
+  });
+
+  it('a edição "antiga" continua no binário da imagem, sem install nem cache', () => {
+    const script = cloakbrowser.serveCommand({ type: 'vpn', fingerprint: FINGERPRINT })[2];
+
+    expect(script).not.toContain('cloakbrowser install');
+    expect(script).toContain('exec /root/.cloakbrowser/chromium-*/chrome');
+    expect(cloakbrowser.containerEnv({ fingerprint: FINGERPRINT }))
+      .not.toContain(`CLOAKBROWSER_CACHE_DIR=${cloakbrowser.CACHE_DIR}`);
+  });
+
   it('sem proxy não inventa --proxy-server', () => {
     expect(commandLine({ type: 'vpn', fingerprint: FINGERPRINT })).not.toContain('--proxy-server');
   });

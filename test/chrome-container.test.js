@@ -263,6 +263,17 @@ describe('CloakBrowser (antidetect por CDP)', () => {
       }
     });
 
+    it('a edição "nova" monta o volume do cache de binários', () => {
+      const pro = Object.assign(cloakConfig(), { cloakEdition: 'pro', cloakLicenseKey: 'chave' });
+      const binds = chromeContainer.buildHostConfig(pro).Binds;
+
+      expect(binds).toContain(cloakbrowser.profileBind(pro.id));
+      expect(binds).toContain(cloakbrowser.cacheBind());
+
+      const free = Object.assign(cloakConfig(), { cloakEdition: 'free' });
+      expect(chromeContainer.buildHostConfig(free).Binds).not.toContain(cloakbrowser.cacheBind());
+    });
+
     it('pede o /dev/shm folgado que o KasmVNC + Chrome exigem', () => {
       expect(chromeContainer.SHM_SIZE.cloakbrowser).toBe(1073741824);
       expect(chromeContainer.buildHostConfig(cloakConfig()).ShmSize).toBe(1073741824);

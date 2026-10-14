@@ -13,7 +13,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
 - **Motor de busca padrão (Google)** — O CloakBrowser não traz o Google na lista de motores que compila (tem Bing/DuckDuckGo/Ecosia): sem motor padrão, escrever uma palavra na barra de endereços **não pesquisa** — ela é tratada como endereço e dá erro de DNS. O container instala o Google por **política gerida** (`/etc/chromium/policies/managed/search.json`), que vale para perfis novos e já existentes (a preferência do perfil é protegida pelo Chromium e é descartada). Muda com `BROWSER_SEARCH_NAME` / `BROWSER_SEARCH_URL`
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
-- **Versão do CloakBrowser por instância** — Cada instância escolhe a versão **antiga (sem chave)** — uma sessão em paralelo — ou a **nova (com licença)**, que usa uma chave da biblioteca. As chaves gerem-se no menu **Chaves CloakBrowser** (várias chaves; cada instância recebe a menos carregada)
+- **Versão do CloakBrowser por instância** — Cada instância escolhe a versão **antiga (sem chave)** — o binário que vem na imagem, uma sessão em paralelo — ou a **nova (com licença)**: aí o container baixa o **binário mais recente** do vendor com a chave da biblioteca (é para esse que a licença Pro vale) e guarda-o num **volume partilhado** (`cloakbrowser-bin`), por isso o download acontece uma vez e não a cada recriação. Sem chave válida o download falha e o binário da imagem é usado na mesma. As chaves gerem-se no menu **Chaves CloakBrowser** (várias chaves; cada instância recebe a menos carregada)
 - **Trocar país da VPN** — Recria o container com nova localização
 - **Trocar o proxy (pelo país)** — Numa instância proxy, o botão **País** lista a biblioteca rotulada pelo país de saída do último teste e recria o container com o proxy escolhido (o perfil é realinhado à geo do novo IP)
 - **Status em tempo real** — IP público, país (VPN) ou IP de saída do proxy, via geolocalização
@@ -77,8 +77,10 @@ node src/server.js
 | `CERTBOT_EMAIL` | `admin@DOMAIN` | Email para Let's Encrypt |
 | `PROXY_INJECTOR_BASE_PORT` | `8100` | Porta base dos forwarders de proxy autenticado (um por instância: `BASE+id`) |
 | `CLOAKBROWSER_IMAGE` | `cloakhq/cloakbrowser:latest` | Imagem do navegador antidetect (fixe uma tag para travar a versão do binário) |
-| `CLOAKBROWSER_IMAGE_FREE` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **antiga** do CloakBrowser (sem chave) — fixe aqui uma tag antiga, ex.: `cloakhq/cloakbrowser:0.5.12` |
-| `CLOAKBROWSER_IMAGE_PRO` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **nova** do CloakBrowser (com licença) |
+| `CLOAKBROWSER_IMAGE_FREE` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **antiga** (sem chave) — fixe aqui uma tag antiga, ex.: `cloakhq/cloakbrowser:0.5.12` |
+| `CLOAKBROWSER_IMAGE_PRO` | (= `CLOAKBROWSER_IMAGE`) | Imagem usada pela versão **nova** (com licença) — o *binário* é baixado pelo wrapper (ver abaixo) |
+| `CLOAKBROWSER_VERSION` | (vazio) | Trava a versão do binário que a versão **nova** baixa (sem isto, baixa a mais recente do canal) |
+| `CLOAKBROWSER_RELEASE_CHANNEL` | `stable` | Canal do binário que a versão **nova** baixa |
 | `CLOAKBROWSER_LICENSE_KEY` | (vazio) | **Já não é usada**: a chave passou a ser por instância, guardada na biblioteca (menu *Chaves CloakBrowser*). O ambiente do dashboard não licencia nenhuma instância |
 | `CLOAKBROWSER_FETCH_WIDEVINE` | (vazio) | Baixa o Widevine no container (só quando o perfil precisar de DRM) |
 | `BROWSER_SEARCH_NAME` | `Google` | Nome do motor de busca padrão instalado por política nas instâncias CloakBrowser |

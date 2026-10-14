@@ -157,7 +157,14 @@ class ChromeContainerService {
     // precisa de volume algum: quem a serve é o KasmVNC dentro do próprio
     // container do navegador.
     if (cloakbrowser.isCloakBrowser(config.browser)) {
-      hostConfig.Binds = [cloakbrowser.profileBind(config.id)];
+      const binds = [cloakbrowser.profileBind(config.id)];
+      // A edição "nova" baixa o binário mais recente do vendor para um cache
+      // partilhado: o volume faz o download acontecer uma vez, e não a cada
+      // recriação do container.
+      if (cloakbrowser.editionOf(config) === 'pro') {
+        binds.push(cloakbrowser.cacheBind());
+      }
+      hostConfig.Binds = binds;
     }
 
     return hostConfig;
