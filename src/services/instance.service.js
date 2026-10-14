@@ -464,6 +464,86 @@ class InstanceService {
     console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} CloakBrowser na edição "${wanted}"`);
   }
 
+  /**
+   * Atualiza o binário do CloakBrowser Pro para a versão mais recente do vendor,
+   * quando existir.
+   *
+   * O download corre num container descartável, com o cache partilhado montado
+   * (o mesmo que as instâncias usam): nenhuma instância é tocada durante o
+   * download. Depois, as instâncias Pro que estão a correr são recriadas — o
+   * perfil, os cookies e os logins ficam — para arrancarem já com o binário
+   * novo. As paradas apanham-no sozinhas no próximo start.
+   *
+   * @returns {Promise<{updated:boolean, downloadedVersion:string|null,
+   *   version:string|null, upToDate:boolean, failed:boolean, recreated:number[]}>}
+   */
+  async updateCloakBrowser() {
+    const licenseId = this._licenseForUpdate();
+    if (!licenseId) {
+      throw Object.assign(
+        new Error('Nenhuma chave na biblioteca do CloakBrowser. Adicione uma em "Chaves CloakBrowser" para atualizar o binário Pro.'),
+        { status: 400 }
+      );
+    }
+
+    const image = await dockerService.ensureBrowserImage('cloakbrowser', 'pro');
+    const { output } = await dockerService.updateCloakBinary({
+      image,
+      licenseKey: cloakLicenses.keyFor(licenseId)
+    });
+    const info = cloakbrowser.parseUpdateOutput(output);
+
+    // Só recria quando houve mesmo download: sem versão nova o que está a correr
+    // já é o binário mais recente e reiniciar os browsers seria só interrupção.
+    const recreated = [];
+    if (info.updated) {
+      for (const row of await this._runningProRows()) {
+        try {
+          await this.changeCloakEdition(row.id, 'pro');
+          recreated.push(row.id);
+        } catch (err) {
+          console.warn(`[WARN] [instance-service] Falha ao recriar a instância ${row.id} com o binário novo:`, err.message);
+        }
+      }
+    }
+
+    console.log(
+      `[${new Date().toISOString()}] [INFO] [instance-service] Binário do CloakBrowser: ` +
+      `${info.version || 'desconhecido'}${info.updated ? ` (atualizado de ${info.downloadedVersion})` : ''}` +
+      `${info.failed ? ' [WARN] update falhou' : ''}`
+    );
+
+    return { ...info, recreated };
+  }
+
+  /**
+   * Chave da biblioteca para atualizar o binário: a que uma instância já usa (a
+   * licença é da instância, não do dashboard) ou, sem nenhuma atribuída, a
+   * primeira da biblioteca.
+   */
+  _licenseForUpdate() {
+    const used = getDb().prepare(
+      'SELECT cloak_license_id AS id FROM instances WHERE cloak_license_id IS NOT NULL ORDER BY id LIMIT 1'
+    ).get();
+    if (used && used.id && cloakLicenses.keyFor(used.id)) return used.id;
+
+    const [first] = cloakLicenses.list();
+    return first ? first.id : null;
+  }
+
+  /** Instâncias CloakBrowser Pro que estão a correr agora. */
+  async _runningProRows() {
+    const rows = getDb().prepare(
+      "SELECT id FROM instances WHERE browser = 'cloakbrowser' AND cloak_edition = 'pro' ORDER BY id"
+    ).all();
+
+    const running = [];
+    for (const row of rows) {
+      if (await dockerService.isChromeRunning(row.id)) running.push(row);
+    }
+    return running;
+  }
+
   async getVPNInfo(id) {
     return vpnService.getVPNStatus(`gluetun${id}`);
   }

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
 const cloakLicenses = require('../services/cloak-licenses.service');
+const instanceService = require('../services/instance.service');
 
 // Todas as rotas exigem sessão: aqui passam chaves de licença.
 router.use(authMiddleware);
@@ -43,6 +44,32 @@ router.post('/check', async (req, res, next) => {
       : `${results.length} chave(s) verificada(s)`;
     res.json({ message, results, licenses: cloakLicenses.list(), total: cloakLicenses.count() });
   } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/cloak-licenses/update - Atualiza o binário Pro para a versão mais
+// recente do vendor (quando existir) e recria as instâncias Pro em execução.
+router.post('/update', async (req, res, next) => {
+  try {
+    const result = await instanceService.updateCloakBrowser();
+    let message;
+    if (result.updated) {
+      const version = result.downloadedVersion || result.version || 'nova versão';
+      message = `Binário Pro atualizado para ${version}`;
+      if (result.recreated.length) {
+        message += ` (${result.recreated.length} instância(s) recriada(s): ${result.recreated.join(', ')})`;
+      }
+    } else if (result.failed) {
+      message = 'Não foi possível atualizar o binário Pro (ver o log do servidor)';
+    } else {
+      message = `Já está na versão mais recente${result.version ? ` (${result.version})` : ''}`;
+    }
+    res.json({ message, ...result });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: 'ValidationError', message: err.message });
+    }
     next(err);
   }
 });

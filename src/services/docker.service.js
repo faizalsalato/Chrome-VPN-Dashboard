@@ -93,6 +93,42 @@ class DockerService {
     return this._pullImage(chromeContainer.imageFor(browser));
   }
 
+  /**
+   * Corre o `cloakbrowser update` num container descartável, com o cache de
+   * binários montado: baixa a versão mais recente do vendor, quando existir.
+   *
+   * O container é à parte de propósito — nenhuma instância é tocada. O binário
+   * novo fica no volume partilhado (`cloakbrowser-bin`) e passa a ser usado
+   * quando a instância for recriada.
+   *
+   * `client` é injetável nos testes (mesmo padrão de `listPublishedPorts`).
+   *
+   * @returns {Promise<{status:number, output:string}>}
+   */
+  async updateCloakBinary({ image, licenseKey, client = docker }) {
+    const container = await client.createContainer({
+      Image: image,
+      Cmd: ['/bin/sh', '-lc', cloakbrowser.updateCommand()],
+      Env: [
+        `CLOAKBROWSER_LICENSE_KEY=${licenseKey}`,
+        `CLOAKBROWSER_CACHE_DIR=${cloakbrowser.CACHE_DIR}`
+      ],
+      // Com tty a saída chega como texto simples, sem os cabeçalhos de
+      // multiplexação que o Docker acrescenta quando não há tty.
+      Tty: true,
+      HostConfig: { Binds: [cloakbrowser.cacheBind()] }
+    });
+
+    try {
+      await container.start();
+      const result = await container.wait();
+      const logs = await container.logs({ stdout: true, stderr: true });
+      return { status: result.StatusCode, output: String(logs) };
+    } finally {
+      await container.remove({ force: true }).catch(() => {});
+    }
+  }
+
   /** Sobe o container do túnel (se existir e estiver parado). */
   async startVpnContainer(id) {
     if (!(await gluetunContainer.exists(id))) return false;

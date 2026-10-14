@@ -482,6 +482,52 @@ class CloakBrowserService {
     return match ? match[1] : null;
   }
 
+  /**
+   * Comando que ATUALIZA o binário Pro para a versão mais recente do vendor,
+   * quando existir.
+   *
+   * O wrapper (`cloakbrowser update`) pergunta ao vendor qual é a versão
+   * resolvida e só baixa se for diferente da que está em cache — por isso é
+   * seguro correr a qualquer momento: sem versão nova responde "Already up to
+   * date.". A última linha é legível por máquina (`CLOAKBROWSER_BINARY=`), para
+   * o dashboard saber o que ficou em cache.
+   */
+  updateCommand() {
+    return [
+      `CLOAKBROWSER_CACHE_DIR=${CACHE_DIR} cloakbrowser update 2>&1` +
+        ` || echo "[WARN] update do binario Pro falhou"`,
+      `CLOAK_BIN=$(ls -d ${CACHE_DIR}/chromium-*/chrome 2>/dev/null | sort -V | tail -1)`,
+      `echo "CLOAKBROWSER_BINARY=$CLOAK_BIN"`
+    ].join('\n');
+  }
+
+  /**
+   * Lê a saída do `cloakbrowser update`: se houve download, qual a versão nova e
+   * qual ficou em cache. O resto do texto é para humanos.
+   */
+  parseUpdateOutput(output) {
+    const text = String(output || '');
+    const binary = /CLOAKBROWSER_BINARY=(\S*)/.exec(text);
+    const downloaded = /Updated to Pro Chromium (\S+)/.exec(text);
+
+    return {
+      updated: !!downloaded,
+      downloadedVersion: downloaded ? downloaded[1] : null,
+      version: this.versionFromPath(binary ? binary[1] : ''),
+      upToDate: /Already up to date\./.test(text),
+      failed: /\[WARN\] update do binario Pro falhou/.test(text)
+    };
+  }
+
+  /**
+   * Versão a partir do caminho do binário em cache
+   * ("/opt/cloak-cache/chromium-154.0.8037.57.2-pro/chrome" → "154.0.8037.57.2").
+   */
+  versionFromPath(binaryPath) {
+    const match = String(binaryPath || '').match(/chromium-(\d[^/]*?)(?:-pro)?\/chrome$/);
+    return match ? match[1] : null;
+  }
+
   /** Comando usado para perguntar a versão à imagem. */
   versionProbe() {
     return 'cloakbrowser info 2>&1';

@@ -39,6 +39,13 @@ const CloakLicenses = {
       checkBtn.parentNode.replaceChild(newCheck, checkBtn);
       newCheck.addEventListener('click', () => this.check());
     }
+
+    const updateBtn = document.getElementById('cloak-licenses-update');
+    if (updateBtn) {
+      const newUpdate = updateBtn.cloneNode(true);
+      updateBtn.parentNode.replaceChild(newUpdate, updateBtn);
+      newUpdate.addEventListener('click', () => this.update());
+    }
   },
 
   async refresh() {
@@ -155,6 +162,34 @@ const CloakLicenses = {
       await this.refresh();
     } catch (err) {
       App.showToast(err.message || 'Erro ao verificar as chaves', 'error');
+    } finally {
+      if (btn) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+  },
+
+  /**
+   * Manda atualizar o binário Pro para a versão mais recente do vendor.
+   *
+   * Sem versão nova o servidor responde "já está na mais recente" (nada é
+   * recriado); com versão nova, o download corre num container à parte e as
+   * instâncias Pro que estão a correr são recriadas com o binário novo — o
+   * perfil, os cookies e os logins ficam.
+   */
+  async update() {
+    const btn = document.getElementById('cloak-licenses-update');
+    if (btn) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+    }
+    try {
+      const result = await API.post('/cloak-licenses/update', {});
+      App.showToast(result.message || 'Binário verificado', 'success');
+      await this.refresh();
+    } catch (err) {
+      App.showToast(err.message || 'Erro ao atualizar o binário', 'error');
     } finally {
       if (btn) {
         btn.classList.remove('loading');
