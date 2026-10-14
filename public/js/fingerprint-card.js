@@ -1,9 +1,12 @@
 /**
  * FingerprintCard - bloco do card da instância que mostra a identidade do
- * perfil (SO/resolução, localização da conexão, fuso e idioma).
+ * perfil (SO/resolução, localização da conexão, fuso do sistema e idioma).
  *
  * A localização exibida é a mesma usada para alinhar o navegador: país/cidade
  * do IP de saída e o fuso marcado pelo fingerprint.
+ *
+ * O selo de procedência ("IP verificado", "por país", "divergente"...) abre o
+ * bloco numa linha própria, como cabeçalho: é o que diz de onde veio o perfil.
  */
 const FingerprintCard = {
   render(instance) {
@@ -16,6 +19,7 @@ const FingerprintCard = {
 
     return `
           <div class="proxy-info fp-info">
+            ${badge ? `<div class="info-row fp-sync-row">${badge}</div>` : ''}
             <div class="info-row">
               <span class="info-label">Fingerprint</span>
               <span class="info-value" title="userAgent e tela do perfil">${this._osLabel(fp)} · ${this._resolution(fp)}</span>
@@ -23,11 +27,11 @@ const FingerprintCard = {
             <div class="info-row">
               <span class="info-label">Localização</span>
               <span class="info-value" title="Local da saída usada no perfil">
-                <span class="fp-loc">${location}</span>${badge}
+                <span class="fp-loc">${location}</span>
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">Timezone</span>
+              <span class="info-label">Sistema Timezone</span>
               <span class="info-value">${this._safe(fp.timezone) || 'N/A'}</span>
             </div>
             <div class="info-row">
@@ -63,7 +67,7 @@ const FingerprintCard = {
     const vpnTimezone = instance.vpnInfo && instance.vpnInfo.timezone;
 
     if (vpnTimezone && fp.timezone && vpnTimezone !== fp.timezone) {
-      return ` <span class="fp-sync fp-sync-warn" title="Fuso do perfil difere do IP de saída (${this._safe(vpnTimezone)})">divergente</span>`;
+      return `<span class="fp-sync fp-sync-warn" title="Fuso do perfil difere do IP de saída (${this._safe(vpnTimezone)})">divergente</span>`;
     }
 
     const labels = {
@@ -80,7 +84,7 @@ const FingerprintCard = {
     const title = source === 'vpn-country'
       ? 'Ajustado ao país da VPN; confirme no próximo start para usar a cidade real'
       : `Origem do perfil: ${source}`;
-    return ` <span class="fp-sync ${kind}" title="${title}">${label}</span>`;
+    return `<span class="fp-sync ${kind}" title="${title}">${label}</span>`;
   },
 
   /**

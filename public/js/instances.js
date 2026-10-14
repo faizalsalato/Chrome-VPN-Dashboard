@@ -112,6 +112,10 @@ const Instances = {
               <span class="info-label">IP</span>
               <span class="info-value">${vpn.publicIP || 'N/A'}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">Timezone</span>
+              <span class="info-value" title="Fuso do IP de saída">${vpn.timezone || 'N/A'}</span>
+            </div>
           </div>`;
       } else if (vpn && !vpn.connected) {
         vpnSection = `
