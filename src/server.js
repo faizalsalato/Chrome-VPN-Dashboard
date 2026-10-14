@@ -6,6 +6,7 @@ const authRouter = require('./routes/auth.router');
 const instancesRouter = require('./routes/instances.router');
 const vpnRouter = require('./routes/vpn.router');
 const proxiesRouter = require('./routes/proxies.router');
+const cloakLicensesRouter = require('./routes/cloak-licenses.router');
 const proxyInjector = require('./services/proxy-injector.service');
 const instanceService = require('./services/instance.service');
 
@@ -24,6 +25,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/instances', instancesRouter);
 app.use('/api/vpn-credentials', vpnRouter);
 app.use('/api/proxies', proxiesRouter);
+app.use('/api/cloak-licenses', cloakLicensesRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

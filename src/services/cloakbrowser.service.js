@@ -79,8 +79,10 @@ const DEFAULT_SCREEN = { width: 1366, height: 768 };
 // declarada é uma contradição que a própria página enxerga.
 const SCREEN_ENV = { width: 'SCREEN_WIDTH', height: 'SCREEN_HEIGHT' };
 // Variáveis repassadas ao container quando existem no ambiente do dashboard.
+// A CHAVE DE LICENÇA não está aqui de propósito: ela é por instância (vem da
+// biblioteca de chaves), não do ambiente do dashboard — senão a edição "antiga"
+// (sem chave) acabaria licenciada pelo env do serviço.
 const PASSTHROUGH_ENV = [
-  'CLOAKBROWSER_LICENSE_KEY',
   'CLOAKBROWSER_FETCH_WIDEVINE'
 ];
 // Campos do fingerprint que viram `--fingerprint-<nome>=<valor>`.
@@ -100,13 +102,38 @@ class CloakBrowserService {
    * o X no tamanho de tela do perfil (construída localmente, ver
    * browser-image.service).
    */
-  image() {
-    return browserImage.image();
+  /** Edição do CloakBrowser da instância: 'free' (antiga, sem chave) ou 'pro'. */
+  editionOf(config) {
+    const value = typeof config === 'string' ? config : (config && config.cloakEdition);
+    return String(value || '').toLowerCase() === 'pro' ? 'pro' : 'free';
   }
 
-  /** Imagem oficial que serve de base para o build (sobrescrevível por env). */
-  baseImage() {
-    return browserImage.baseImage();
+  /**
+   * Imagem oficial (base) de cada edição.
+   *
+   * O binário ANTIGO continua livre, sem chave; o NOVO pede a chave para passar
+   * de uma sessão em paralelo (no modo grátis ele aceita só uma). Cada edição
+   * aceita uma tag fixa por env — é assim que se trava a versão sem mexer no
+   * código:
+   *   CLOAKBROWSER_IMAGE_FREE=cloakhq/cloakbrowser:0.5.12
+   *   CLOAKBROWSER_IMAGE_PRO=cloakhq/cloakbrowser:latest
+   * Sem elas, as duas usam CLOAKBROWSER_IMAGE (o comportamento de sempre) e a
+   * diferença entre as edições fica só na chave.
+   */
+  baseImage(edition) {
+    const name = this.editionOf(edition) === 'pro'
+      ? 'CLOAKBROWSER_IMAGE_PRO'
+      : 'CLOAKBROWSER_IMAGE_FREE';
+    const configured = String(process.env[name] || '').trim();
+    return configured || browserImage.baseImage();
+  }
+
+  /**
+   * Imagem derivada (KasmVNC) usada nas instâncias daquela edição. Cada versão
+   * do binário tem a SUA derivada, para as duas poderem coexistir no host.
+   */
+  image(edition) {
+    return browserImage.imageFor(this.baseImage(edition));
   }
 
   /** O navegador desta instância é o CloakBrowser? */
@@ -309,6 +336,10 @@ class CloakBrowserService {
       const value = process.env[name];
       if (value) env.push(`${name}=${value}`);
     }
+    // Chave da edição "nova": vem da biblioteca de chaves, uma por instância.
+    // Sem chave o binário arranca no modo grátis (uma sessão em paralelo).
+    const licenseKey = String((config && config.cloakLicenseKey) || '').trim();
+    if (licenseKey) env.push(`CLOAKBROWSER_LICENSE_KEY=${licenseKey}`);
     return env;
   }
 

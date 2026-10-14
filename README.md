@@ -12,6 +12,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Escolha de navegador** — Cada instância usa **Chromium**, **Brave** ou **CloakBrowser** (selecionado na criação)
 - **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
+- **Versão do CloakBrowser por instância** — Cada instância escolhe a versão **antiga (sem chave)** — uma sessão em paralelo — ou a **nova (com licença)**, que usa uma chave da biblioteca. As chaves gerem-se no menu **Chaves CloakBrowser** (várias chaves; cada instância recebe a menos carregada)
 - **Trocar país da VPN** — Recria o container com nova localização
 - **Trocar o proxy (pelo país)** — Numa instância proxy, o botão **País** lista a biblioteca rotulada pelo país de saída do último teste e recria o container com o proxy escolhido (o perfil é realinhado à geo do novo IP)
 - **Status em tempo real** — IP público, país (VPN) ou IP de saída do proxy, via geolocalização
@@ -75,7 +76,9 @@ node src/server.js
 | `CERTBOT_EMAIL` | `admin@DOMAIN` | Email para Let's Encrypt |
 | `PROXY_INJECTOR_BASE_PORT` | `8100` | Porta base dos forwarders de proxy autenticado (um por instância: `BASE+id`) |
 | `CLOAKBROWSER_IMAGE` | `cloakhq/cloakbrowser:latest` | Imagem do navegador antidetect (fixe uma tag para travar a versão do binário) |
-| `CLOAKBROWSER_LICENSE_KEY` | (vazio) | Chave do CloakBrowser Pro; sem ela o binário roda no modo grátis (1 sessão por vez) |
+| `CLOAKBROWSER_IMAGE_FREE` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **antiga** do CloakBrowser (sem chave) — fixe aqui uma tag antiga, ex.: `cloakhq/cloakbrowser:0.5.12` |
+| `CLOAKBROWSER_IMAGE_PRO` | (= `CLOAKBROWSER_IMAGE`) | Imagem da versão **nova** do CloakBrowser (com licença) |
+| `CLOAKBROWSER_LICENSE_KEY` | (vazio) | **Já não é usada**: a chave passou a ser por instância, guardada na biblioteca (menu *Chaves CloakBrowser*). O ambiente do dashboard não licencia nenhuma instância |
 | `CLOAKBROWSER_FETCH_WIDEVINE` | (vazio) | Baixa o Widevine no container (só quando o perfil precisar de DRM) |
 | `VNC_BASE_PORT` | `7001` | Porta base do noVNC no host (cada instância usa `BASE+id-1`) |
 | `VNC_VIEWER_IMAGE` | `chrome-vpn-dashboard-vnc:latest` | Imagem do viewer VNC das instâncias CloakBrowser |
@@ -311,7 +314,13 @@ dashboard/
 - `POST /api/instances/:id/restart` — Reiniciar
 - `POST /api/instances/:id/country` — Trocar país (apenas VPN; body: `{ country }`). Preserva a identidade do perfil (plataforma/tela/GPU) e o volume do perfil (cookies/login): só os containers são refeitos
 - `POST /api/instances/:id/proxy` — Trocar o proxy (apenas instâncias proxy; body: `{ proxyId }`, o id de um proxy da biblioteca — a senha fica no servidor)
+- `POST /api/instances/:id/cloak-edition` — Troca a versão do CloakBrowser (body: `{ edition: "free" | "pro" }`; `free` = binário antigo sem chave, `pro` = binário novo com a chave da biblioteca). Preserva o perfil
 - `GET /api/instances/:id/vpn` — Info VPN/proxy (IP e país de saída)
+
+### Chaves do CloakBrowser (requer JWT)
+- `GET /api/cloak-licenses` — Lista as chaves (só as pontas, nunca a chave inteira) com o plano e quantas instâncias usam cada uma
+- `POST /api/cloak-licenses` — Adiciona chaves (body: `{ "keys": "chave1\nchave2" }`; uma por linha, duplicadas são ignoradas)
+- `DELETE /api/cloak-licenses/:id` — Remove uma chave (as instâncias que a usavam passam a usar outra da biblioteca)
 
 ## Rodar em Background
 

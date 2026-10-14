@@ -219,7 +219,7 @@ describe('CloakBrowser (antidetect por CDP)', () => {
   describe('imagem, porta e comando', () => {
     it('usa a imagem do CloakBrowser e publica o roteador do CDP/tela', () => {
       const config = cloakConfig();
-      expect(chromeContainer.imageFor('cloakbrowser')).toBe('cloakhq/cloakbrowser:latest');
+      expect(chromeContainer.imageFor(config)).toBe('chrome-vpn-dashboard-browser:latest');
       // DevTools (9222) e tela (9225) só escutam no loopback: quem expõe os
       // dois numa porta só é o roteador (9223).
       expect(chromeContainer.internalPortFor('cloakbrowser')).toBe('9223/tcp');
@@ -229,13 +229,38 @@ describe('CloakBrowser (antidetect por CDP)', () => {
       const options = chromeContainer.buildCreateOptions(config);
       const line = options.Cmd.join(' ');
 
-      expect(options.Image).toBe('cloakhq/cloakbrowser:latest');
+      expect(options.Image).toBe('chrome-vpn-dashboard-browser:latest');
       // O binário é lançado direto no X do container (o cloakserve não abre janela).
       expect(options.Cmd[0]).toBe('/bin/sh');
       expect(line).toContain('/root/.cloakbrowser/chromium-*/chrome');
       expect(line).not.toContain('cloakserve');
       expect(line).toContain('--remote-debugging-port=9222');
       expect(line).toContain('--listen 9223 --cdp 9222 --screen 9225');
+    });
+
+    it('a imagem e a chave seguem a edição do CloakBrowser', () => {
+      const previous = process.env.CLOAKBROWSER_IMAGE_PRO;
+      process.env.CLOAKBROWSER_IMAGE_PRO = 'cloakhq/cloakbrowser:0.6.2';
+      try {
+        const pro = Object.assign(cloakConfig(), {
+          cloakEdition: 'pro',
+          cloakLicenseKey: 'chave-da-instancia'
+        });
+        const options = chromeContainer.buildCreateOptions(pro);
+
+        // Imagem da versão nova (tag própria) e a chave da biblioteca no env.
+        expect(options.Image).toBe('chrome-vpn-dashboard-browser:0.6.2');
+        expect(options.Env).toContain('CLOAKBROWSER_LICENSE_KEY=chave-da-instancia');
+
+        // A edição antiga fica na imagem por omissão e sem chave.
+        const free = Object.assign(cloakConfig(), { cloakEdition: 'free', cloakLicenseKey: null });
+        expect(chromeContainer.buildCreateOptions(free).Image).toBe('chrome-vpn-dashboard-browser:latest');
+        expect(chromeContainer.buildCreateOptions(free).Env)
+          .not.toContain('CLOAKBROWSER_LICENSE_KEY=chave-da-instancia');
+      } finally {
+        if (previous === undefined) delete process.env.CLOAKBROWSER_IMAGE_PRO;
+        else process.env.CLOAKBROWSER_IMAGE_PRO = previous;
+      }
     });
 
     it('pede o /dev/shm folgado que o KasmVNC + Chrome exigem', () => {

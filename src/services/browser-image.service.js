@@ -32,13 +32,41 @@ function toLf(content) {
 }
 
 class BrowserImageService {
-  /** Imagem do navegador usada nas instâncias (sobrescrevível por env). */
-  image() {
-    const configured = String(process.env.BROWSER_IMAGE || '').trim();
-    return configured || DEFAULT_IMAGE;
+  /**
+   * Repositório das imagens derivadas (sem tag). `BROWSER_IMAGE` continua a
+   * mandar no nome, mas só na parte do repositório: a TAG passa a acompanhar a
+   * da imagem base, para a versão antiga e a nova do CloakBrowser poderem
+   * coexistir (uma derivada por versão) sem uma sobrescrever a outra.
+   */
+  repo() {
+    const configured = String(process.env.BROWSER_IMAGE || '').trim() || DEFAULT_IMAGE;
+    // Tira a tag — mas só quando o que vem depois do último ':' não é a porta
+    // de um registry (nesse caso há uma '/' depois).
+    const match = configured.match(/^(.*):([^/:]+)$/);
+    return match ? match[1] : configured;
   }
 
-  /** Imagem oficial que serve de base para o build. */
+  /** Tag de uma imagem de referência ("…:0.5.12" → "0.5.12"). */
+  tagOf(reference) {
+    const match = String(reference || '').match(/:([^/:]+)$/);
+    return match ? match[1] : 'latest';
+  }
+
+  /**
+   * Imagem derivada de uma base. Base `…:latest` → `…:latest` (o nome
+   * histórico, que já existe nos hosts); base `…:0.5.12` → `…:0.5.12`.
+   */
+  imageFor(baseImage) {
+    const base = String(baseImage || this.baseImage());
+    return `${this.repo()}:${this.tagOf(base).replace(/[^A-Za-z0-9_.-]/g, '-')}`;
+  }
+
+  /** Imagem derivada da base por omissão (assinatura histórica). */
+  image(baseImage) {
+    return this.imageFor(baseImage || this.baseImage());
+  }
+
+  /** Imagem oficial que serve de base para o build (sobrescrevível por env). */
   baseImage() {
     const configured = String(process.env.CLOAKBROWSER_IMAGE || '').trim();
     return configured || DEFAULT_BASE_IMAGE;
@@ -50,11 +78,12 @@ class BrowserImageService {
   }
 
   /**
-   * Garante a imagem do navegador. Ela é local (não vem de registry), então
-   * "não existe" significa "construir", nunca "baixar".
+   * Garante a imagem derivada de uma base. Ela é local (não vem de registry),
+   * então "não existe" significa "construir", nunca "baixar".
    */
-  async ensureImage() {
-    const image = this.image();
+  async ensureImage(baseImage) {
+    const base = baseImage || this.baseImage();
+    const image = this.imageFor(base);
     try {
       await docker.getImage(image).inspect();
       return image;
@@ -62,18 +91,18 @@ class BrowserImageService {
       if (err.statusCode !== 404) throw err;
     }
 
-    console.log(`[INFO] [browser-image] Construindo a imagem do navegador (${image})...`);
-    await this._buildImage();
+    console.log(`[INFO] [browser-image] Construindo ${image} a partir de ${base}...`);
+    await this._buildImage(image, base);
     console.log(`[INFO] [browser-image] Imagem do navegador pronta (${image})`);
     return image;
   }
 
   /**
    * Constrói a partir de uma cópia temporária do contexto, com os arquivos
-   * normalizados para LF — o build precisa funcionar mesmo com o repositório
+   * normalizados para LF — o build precisa de funcionar mesmo com o repositório
    * editado no Windows.
    */
-  async _buildImage() {
+  async _buildImage(image, base) {
     const context = fs.mkdtempSync(path.join(require('os').tmpdir(), 'browser-image-'));
 
     try {
@@ -83,7 +112,7 @@ class BrowserImageService {
       }
       const stream = await docker.buildImage(
         { context, src: BUILD_CONTEXT },
-        { t: this.image(), buildargs: { BROWSER_BASE_IMAGE: this.baseImage() } }
+        { t: image, buildargs: { BROWSER_BASE_IMAGE: base } }
       );
       await new Promise((resolve, reject) => {
         docker.modem.followProgress(stream, (err) => (err ? reject(err) : resolve()));

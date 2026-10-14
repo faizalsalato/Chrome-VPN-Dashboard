@@ -1569,6 +1569,34 @@ body {
   border-color: var(--border);
   background-color: transparent;
 }
+/* ---------- Biblioteca de chaves do CloakBrowser ---------- */
+
+.cloak-license-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cloak-license-row:last-child {
+  border-bottom: none;
+}
+
+.cloak-license-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cloak-license-key {
+  font-family: 'Courier New', monospace;
+  color: var(--text-primary);
+}
+
 /* ============================================================
    Biblioteca de Proxies — página redesenhada
    (grade de cartões + ações Adicionar / Testar / Testar todos)

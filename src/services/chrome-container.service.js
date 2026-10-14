@@ -34,10 +34,14 @@ function normalizeBrowser(browser) {
   return BROWSERS.includes(browser) ? browser : 'chromium';
 }
 
-/** Imagem do navegador escolhido no perfil. */
-function imageFor(browser) {
-  if (browser === 'brave') return BRAVE_IMAGE;
-  if (cloakbrowser.isCloakBrowser(browser)) return cloakbrowser.image();
+/**
+ * Imagem do navegador escolhido no perfil. Aceita o `config` inteiro (que traz
+ * a edição do CloakBrowser) ou só o nome do navegador.
+ */
+function imageFor(configOrBrowser) {
+  const config = typeof configOrBrowser === 'string' ? { browser: configOrBrowser } : (configOrBrowser || {});
+  if (config.browser === 'brave') return BRAVE_IMAGE;
+  if (cloakbrowser.isCloakBrowser(config.browser)) return cloakbrowser.image(config.cloakEdition);
   return CHROME_IMAGE;
 }
 
@@ -162,7 +166,7 @@ class ChromeContainerService {
   /** Opções completas de docker.createContainer para o perfil. */
   buildCreateOptions(config) {
     const options = {
-      Image: imageFor(config.browser),
+      Image: imageFor(config),
       name: `chrome${config.id}`,
       Env: this.buildEnv(config),
       HostConfig: this.buildHostConfig(config)
@@ -221,7 +225,7 @@ class ChromeContainerService {
    */
   matchesSpec(info, config) {
     if (!info) return false;
-    if (info.Config.Image !== imageFor(config.browser)) return false;
+    if (info.Config.Image !== imageFor(config)) return false;
 
     // No CloakBrowser o proxy viaja no comando do container: trocar de proxy
     // (ou de modo headless) exige recriar o container.

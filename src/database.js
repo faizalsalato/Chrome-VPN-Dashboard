@@ -77,6 +77,18 @@ function initDatabase() {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS cloak_licenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      license_key TEXT UNIQUE NOT NULL,
+      label TEXT,
+      plan TEXT,
+      expires TEXT,
+      seats_active INTEGER,
+      seats_limit INTEGER,
+      checked_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: adiciona colunas de proxy em instâncias já existentes
@@ -92,7 +104,12 @@ function initDatabase() {
     ['name', 'ALTER TABLE instances ADD COLUMN name TEXT'],
     ['fingerprint', 'ALTER TABLE instances ADD COLUMN fingerprint TEXT'],
     ['browser', "ALTER TABLE instances ADD COLUMN browser TEXT DEFAULT 'chromium'"],
-    ['vpn_provider', "ALTER TABLE instances ADD COLUMN vpn_provider TEXT DEFAULT 'surfshark'"]
+    ['vpn_provider', "ALTER TABLE instances ADD COLUMN vpn_provider TEXT DEFAULT 'surfshark'"],
+    // Edição do CloakBrowser: 'free' = binário antigo, sem chave; 'pro' = binário
+    // novo com a chave da biblioteca (é o que permite mais de uma sessão em
+    // paralelo — no modo grátis o binário só aceita uma).
+    ['cloak_edition', "ALTER TABLE instances ADD COLUMN cloak_edition TEXT DEFAULT 'free'"],
+    ['cloak_license_id', 'ALTER TABLE instances ADD COLUMN cloak_license_id INTEGER']
   ];
   for (const [col, sql] of migrations) {
     if (!instanceCols.includes(col)) {

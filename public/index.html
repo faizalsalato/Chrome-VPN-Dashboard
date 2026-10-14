@@ -43,6 +43,10 @@
           <span class="nav-icon">🔑</span>
           <span class="nav-label">Credenciais VPN</span>
         </button>
+        <button class="nav-item" id="cloak-licenses-btn" type="button">
+          <span class="nav-icon">🗝️</span>
+          <span class="nav-label">Chaves CloakBrowser</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button id="create-btn" class="btn btn-primary sidebar-create">
@@ -135,6 +139,18 @@
             O CloakBrowser tem os patches de fingerprint no próprio binário. A tela abre
             pelo cliente web do KasmVNC, no mesmo endereço do subdomínio.
           </p>
+        </div>
+        <div id="cloak-edition-group" class="hidden">
+          <div class="form-group">
+            <label for="create-cloak-edition">Versão do CloakBrowser</label>
+            <select id="create-cloak-edition" class="form-select">
+              <option value="free" selected>Antiga — sem chave (uma sessão por vez)</option>
+              <option value="pro">Nova — com licença (usa uma chave da biblioteca)</option>
+            </select>
+            <p class="form-hint">
+              As chaves gerem-se no menu <strong>Chaves CloakBrowser</strong>.
+            </p>
+          </div>
         </div>
         <div id="vpn-country-group">
           <div class="form-group">
@@ -269,6 +285,49 @@
         <div class="dialog-actions">
           <button id="create-cancel" class="btn btn-secondary">Cancelar</button>
           <button id="create-confirm" class="btn btn-primary">Criar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CloakBrowser Licenses Dialog -->
+    <div id="cloak-licenses-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">🗝️ Chaves CloakBrowser</h2>
+        <p class="form-hint">
+          No modo grátis o CloakBrowser aceita <strong>uma sessão</strong> em paralelo; cada
+          chave acrescenta sessões às instâncias que a usam. A chave nunca é exibida de volta
+          (só as pontas).
+        </p>
+        <div id="cloak-licenses-list"></div>
+        <div class="form-group">
+          <label for="cloak-licenses-input">Adicionar chaves</label>
+          <textarea id="cloak-licenses-input" class="form-textarea"
+                    placeholder="uma chave por linha" autocomplete="off"></textarea>
+        </div>
+        <div class="dialog-actions">
+          <button id="cloak-licenses-close" class="btn btn-secondary">Fechar</button>
+          <button id="cloak-licenses-add" class="btn btn-primary">Adicionar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CloakBrowser Edition Dialog (antiga sem chave / nova com licença) -->
+    <div id="cloak-edition-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">Versão do CloakBrowser</h2>
+        <div class="form-group">
+          <label for="cloak-edition-select">Versão</label>
+          <select id="cloak-edition-select" class="form-select">
+            <option value="free">Antiga — sem chave (uma sessão por vez)</option>
+            <option value="pro">Nova — com licença (usa uma chave da biblioteca)</option>
+          </select>
+        </div>
+        <p id="cloak-edition-hint" class="form-hint">
+          A troca reinicia o navegador. O perfil (cookies e login) é preservado.
+        </p>
+        <div class="dialog-actions">
+          <button id="cloak-edition-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="cloak-edition-confirm" class="btn btn-primary">Trocar</button>
         </div>
       </div>
     </div>
@@ -542,6 +601,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/proxy-label.js"></script>
+<script src="/js/cloak-licenses.js"></script>
   <script src="/js/fingerprint-card.js"></script>
   <script src="/js/instances.js"></script>
   <script src="/js/vpn-creds.js"></script>

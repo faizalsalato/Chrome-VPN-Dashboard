@@ -48,7 +48,12 @@ class DockerService {
       // Porta interna do navegador (9223 no CloakBrowser: o roteador que serve
       // CDP e tela) — é a que o gluetun publica no modo VPN.
       displayPort: chromeContainer.internalPortFor(browser),
-      isCloak
+      isCloak,
+      // Edição do CloakBrowser (antiga sem chave / nova com licença) e a chave
+      // que a instância usa — é o que o `cloakbrowser.containerEnv` transforma
+      // em `CLOAKBROWSER_LICENSE_KEY` no container.
+      cloakEdition: cloakbrowser.editionOf(config),
+      cloakLicenseKey: isCloak ? (config.cloakLicenseKey || null) : null
     };
   }
 
@@ -79,10 +84,11 @@ class DockerService {
    * Ela não está em registry nenhum — sai da imagem oficial (baixada aqui) e é
    * construída localmente. Baixar pelo nome derivado falharia sempre.
    */
-  async ensureBrowserImage(browser) {
+  async ensureBrowserImage(browser, edition) {
     if (cloakbrowser.isCloakBrowser(browser)) {
-      await this._pullImage(cloakbrowser.baseImage());
-      return browserImage.ensureImage();
+      const base = cloakbrowser.baseImage(edition);
+      await this._pullImage(base);
+      return browserImage.ensureImage(base);
     }
     return this._pullImage(chromeContainer.imageFor(browser));
   }
@@ -174,7 +180,7 @@ class DockerService {
    */
   async createInstance(config) {
     config.browser = chromeContainer.normalizeBrowser(config.browser);
-    await this.ensureBrowserImage(config.browser);
+    await this.ensureBrowserImage(config.browser, config.cloakEdition);
 
     if (normalizeType(config) === 'proxy') {
       return this._createProxyInstance(config);

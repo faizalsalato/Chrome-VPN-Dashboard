@@ -18,6 +18,7 @@ const profileFingerprint = require('./profile-fingerprint.service');
 const locationResolver = require('./location-resolver.service');
 const chromeContainer = require('./chrome-container.service');
 const cloakbrowser = require('./cloakbrowser.service');
+const cloakLicenses = require('./cloak-licenses.service');
 const proxiesService = require('./proxies.service');
 const { getDb } = require('../database');
 const crypto = require('crypto');
@@ -40,7 +41,7 @@ const EXIT_ALIGN_LATE_DELAYS_MS = [45000, 120000];
 const EXIT_WATCH_INTERVAL_MS = parseInt(process.env.EXIT_WATCH_INTERVAL_MS || '120000', 10);
 const ROW_COLUMNS =
   'id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, ' +
-  'proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider';
+  'proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id';
 
 class InstanceService {
   constructor() {
@@ -90,6 +91,9 @@ class InstanceService {
           cdp: this._cdpFor(instance, meta),
           vnc: this._vncFor(instance, meta),
           vpnProvider: (meta && meta.vpn_provider) || 'surfshark',
+          // Edição do CloakBrowser ('free' = antiga sem chave; 'pro' = nova com
+          // licença): é o que o cartão usa para mostrar/trocar.
+          cloakEdition: cloakbrowser.editionOf({ cloakEdition: meta && meta.cloak_edition }),
           proxyInfo: type === 'proxy' && meta ? this._proxyInfoFromRow(meta) : null,
           fingerprint: this._parseJson(meta && meta.fingerprint),
           vpnInfo,
@@ -109,6 +113,23 @@ class InstanceService {
     const id = port - BASE_PORT + 1;
 
     const config = { id, port, domain: DOMAIN, type, browser };
+
+    // Edição do CloakBrowser (só faz sentido nele): 'free' = binário antigo, sem
+    // chave; 'pro' = binário novo com uma chave da biblioteca. Sem chaves na
+    // biblioteca, a edição "pro" é recusada em vez de arrancar sem licença.
+    config.cloakEdition = cloakbrowser.editionOf(options);
+    if (cloakbrowser.isCloakBrowser(browser) && config.cloakEdition === 'pro') {
+      const licenseId = cloakLicenses.ensureAssigned(id);
+      const licenseKey = licenseId ? cloakLicenses.keyFor(licenseId) : null;
+      if (!licenseKey) {
+        throw Object.assign(
+          new Error('Nenhuma chave na biblioteca do CloakBrowser. Adicione uma em "Chaves CloakBrowser" antes de usar a versão com licença.'),
+          { status: 400 }
+        );
+      }
+      config.cloakLicenseId = licenseId;
+      config.cloakLicenseKey = licenseKey;
+    }
 
     if (type === 'proxy') {
       config.proxy = {
@@ -357,6 +378,73 @@ class InstanceService {
     }
 
     console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} proxy alterado para #${proxy.id}`);
+  }
+
+  /**
+   * Troca a edição do CloakBrowser da instância, recriando os containers:
+   *
+   *  - `free` (antiga, SEM chave): binário livre — uma sessão em paralelo;
+   *  - `pro` (nova, COM licença): binário novo + uma chave da biblioteca.
+   *
+   * O volume do perfil fica montado (a sessão do usuário sobrevive) e o
+   * fingerprint não é mexido: trocar de edição troca o binário e a chave, não a
+   * identidade do perfil.
+   */
+  async changeCloakEdition(id, edition) {
+    const row = this._rowFor(id);
+    if (!row) {
+      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
+    }
+    if (!cloakbrowser.isCloakBrowser(chromeContainer.normalizeBrowser(row.browser))) {
+      throw Object.assign(new Error('Troca de edição disponível apenas para instâncias CloakBrowser'), { status: 400 });
+    }
+
+    const wanted = cloakbrowser.editionOf(edition);
+    let licenseId = null;
+    if (wanted === 'pro') {
+      licenseId = cloakLicenses.ensureAssigned(id);
+      if (!licenseId) {
+        throw Object.assign(
+          new Error('Nenhuma chave na biblioteca do CloakBrowser. Adicione uma em "Chaves CloakBrowser" antes de usar a versão com licença.'),
+          { status: 400 }
+        );
+      }
+    }
+
+    // O país pedido ao túnel tem de ser lido ANTES de derrubar os containers.
+    const vpnCountry = (row.type || 'vpn') === 'proxy'
+      ? null
+      : await dockerService.getVpnCountry(id).catch(() => null);
+
+    await dockerService.removeContainers(id);
+    await new Promise((resolve) => setTimeout(resolve, CONTAINER_SETTLE_MS));
+
+    // A edição vai para a linha ANTES de montar o container: a spec (imagem +
+    // chave) é montada a partir dela em `_containerConfig`.
+    getDb().prepare('UPDATE instances SET cloak_edition = ?, cloak_license_id = ? WHERE id = ?')
+      .run(wanted, licenseId, id);
+
+    const updated = this._rowFor(id);
+
+    await dockerService.createInstance({
+      id,
+      port: updated.port,
+      domain: DOMAIN,
+      type: updated.type || 'vpn',
+      browser: chromeContainer.normalizeBrowser(updated.browser),
+      vpnProvider: updated.vpn_provider || 'surfshark',
+      serverCountries: vpnCountry || undefined,
+      proxy: updated.type === 'proxy' ? this._proxyConfigFromRow(updated) : null,
+      fingerprint: this._parseJson(updated.fingerprint),
+      cloakEdition: wanted,
+      cloakLicenseId: licenseId,
+      cloakLicenseKey: licenseId ? cloakLicenses.keyFor(licenseId) : null
+    });
+
+    await this._prepareInstance(id);
+    await dockerService.startInstance(id);
+
+    console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} CloakBrowser na edição "${wanted}"`);
   }
 
   async getVPNInfo(id) {
@@ -699,8 +787,22 @@ class InstanceService {
       type: row.type || 'vpn',
       browser: chromeContainer.normalizeBrowser(row.browser),
       fingerprint,
-      proxy: row.type === 'proxy' ? this._proxyConfigFromRow(row) : null
+      proxy: row.type === 'proxy' ? this._proxyConfigFromRow(row) : null,
+      cloakEdition: cloakbrowser.editionOf({ cloakEdition: row.cloak_edition }),
+      cloakLicenseKey: this._cloakLicenseKeyFor(row)
     };
+  }
+
+  /**
+   * Chave da edição "nova" para uma instância: a que já está atribuída ou, se
+   * desapareceu da biblioteca, outra qualquer (a menos carregada). Sem chaves na
+   * biblioteca devolve null — e aí o binário arranca no modo grátis.
+   */
+  _cloakLicenseKeyFor(row) {
+    if (!cloakbrowser.isCloakBrowser(chromeContainer.normalizeBrowser(row.browser))) return null;
+    if (cloakbrowser.editionOf({ cloakEdition: row.cloak_edition }) !== 'pro') return null;
+    const licenseId = cloakLicenses.ensureAssigned(row.id);
+    return licenseId ? cloakLicenses.keyFor(licenseId) : null;
   }
 
   _proxyConfigFromRow(row) {
@@ -790,10 +892,11 @@ class InstanceService {
   }
 
   _insertRow(id, port, type, config, fingerprint, browser, vpnProvider) {
+    const isCloak = cloakbrowser.isCloakBrowser(browser);
     getDb().prepare(
       `INSERT OR REPLACE INTO instances
-       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       port,
@@ -807,7 +910,9 @@ class InstanceService {
       type === 'proxy' && config.proxy.auth ? 1 : 0,
       JSON.stringify(fingerprint),
       browser,
-      type === 'vpn' ? vpnProvider : null
+      type === 'vpn' ? vpnProvider : null,
+      isCloak ? config.cloakEdition : null,
+      isCloak ? (config.cloakLicenseId || null) : null
     );
   }
 

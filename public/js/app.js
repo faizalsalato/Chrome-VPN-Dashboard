@@ -22,6 +22,12 @@ const App = {
       vpnCredsBtn.addEventListener('click', () => VpnCreds.open());
     }
 
+    // Chaves do CloakBrowser (biblioteca de licenças), também na sidebar
+    const cloakLicensesBtn = document.getElementById('cloak-licenses-btn');
+    if (cloakLicensesBtn) {
+      cloakLicensesBtn.addEventListener('click', () => CloakLicenses.open());
+    }
+
     // Set up sidebar navigation (troca de views: Instâncias / Proxies)
     this.initNav();
 
@@ -160,6 +166,8 @@ const App = {
 
     const browserSel = document.getElementById('instance-browser');
     if (browserSel) browserSel.value = 'chromium';
+    const editionSel = document.getElementById('create-cloak-edition');
+    if (editionSel) editionSel.value = 'free';
     this._syncBrowserHint();
 
     // Proxy: só se escolhe um item da biblioteca (nada é digitado aqui).
@@ -195,12 +203,24 @@ const App = {
     }
   },
 
-  /** Mostra a nota do CloakBrowser apenas com ele selecionado. */
+  /** Mostra a nota do CloakBrowser (e a versão) apenas com ele selecionado. */
   _syncBrowserHint() {
     const hint = document.getElementById('browser-cdp-hint');
     const browserSel = document.getElementById('instance-browser');
-    if (!hint || !browserSel) return;
-    hint.classList.toggle('hidden', browserSel.value !== 'cloakbrowser');
+    if (!browserSel) return;
+
+    const isCloak = browserSel.value === 'cloakbrowser';
+    if (hint) hint.classList.toggle('hidden', !isCloak);
+
+    // A versão (antiga sem chave / nova com licença) só existe no CloakBrowser.
+    const editionGroup = document.getElementById('cloak-edition-group');
+    if (editionGroup) editionGroup.classList.toggle('hidden', !isCloak);
+  },
+
+  /** Versão do CloakBrowser escolhida na criação ('free' | 'pro'). */
+  _cloakEditionValue() {
+    const el = document.getElementById('create-cloak-edition');
+    return el && el.value === 'pro' ? 'pro' : 'free';
   },
 
   /** Mostra/esconde os grupos VPN e Proxy conforme o tipo selecionado. */
@@ -248,6 +268,8 @@ const App = {
     const browser = browserEl && ['brave', 'cloakbrowser'].includes(browserEl.value)
       ? browserEl.value
       : 'chromium';
+    // Versão do CloakBrowser (só quando é ele o navegador escolhido).
+    const cloakEdition = browser === 'cloakbrowser' ? this._cloakEditionValue() : undefined;
 
     if (type === 'proxy') {
       const savedSel = document.getElementById('proxy-saved');
@@ -269,6 +291,7 @@ const App = {
       return {
         type: 'proxy',
         browser,
+        cloakEdition,
         proxy: {
           host: proxy.host,
           port: proxy.port,
@@ -283,7 +306,7 @@ const App = {
     const country = document.getElementById('country-select').value;
     const vpnProviderEl = document.getElementById('vpn-provider');
     const vpnProvider = vpnProviderEl && vpnProviderEl.value === 'expressvpn' ? 'expressvpn' : 'surfshark';
-    return { country, type: 'vpn', browser, vpnProvider };
+    return { country, type: 'vpn', browser, vpnProvider, cloakEdition };
   },
 
   initDialog() {

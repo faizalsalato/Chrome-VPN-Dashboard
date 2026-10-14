@@ -59,6 +59,10 @@ const Instances = {
     const proxy = instance.proxyInfo;
     const vpn = instance.vpnInfo;
 
+    // Só o CloakBrowser tem duas versões: antiga (sem chave) e nova (com licença).
+    const isCloak = instance.browser === 'cloakbrowser';
+    const cloakEdition = instance.cloakEdition === 'pro' ? 'pro' : 'free';
+
     const typeBadge = type === 'proxy'
       ? `<span class="type-badge proxy">🌐 Proxy</span>`
       : `<span class="type-badge vpn">🔒 VPN</span>`;
@@ -178,6 +182,11 @@ const Instances = {
             <span class="btn-text">🔄 Restart</span>
             <span class="btn-loading"><span class="spinner"></span></span>
           </button>
+          ${isCloak ? `<button class="btn btn-secondary btn-sm action-cloak-edition" data-id="${instance.id}" data-edition="${cloakEdition}"
+                  title="${cloakEdition === 'pro' ? 'Versão nova do CloakBrowser (com licença)' : 'Versão antiga do CloakBrowser (sem chave)'}">
+            <span class="btn-text">🗝️ ${cloakEdition === 'pro' ? 'Licença' : 'Antiga'}</span>
+            <span class="btn-loading"><span class="spinner"></span></span>
+          </button>` : ''}
           <button class="btn btn-secondary btn-sm action-country" data-id="${instance.id}" data-type="${type}"
                   title="${type === 'proxy' ? 'Trocar o proxy (escolha pelo país de saída)' : 'Trocar o país da VPN'}">
             <span class="btn-text">🌍 País</span>
@@ -274,6 +283,11 @@ const Instances = {
       btn.addEventListener('click', (e) => this.handleRestart(e));
     });
 
+    // CloakBrowser edition buttons
+    document.querySelectorAll('.action-cloak-edition').forEach(btn => {
+      btn.addEventListener('click', (e) => this.handleChangeCloakEdition(e));
+    });
+
     // Change country buttons
     document.querySelectorAll('.action-country').forEach(btn => {
       btn.addEventListener('click', (e) => this.handleChangeCountry(e));
@@ -345,6 +359,61 @@ const Instances = {
       btn.classList.remove('loading');
       btn.disabled = false;
     }
+  },
+
+  /**
+   * Abre o diálogo da VERSÃO do CloakBrowser, já com a edição atual escolhida.
+   *
+   * "Antiga (sem chave)" = binário livre — uma sessão em paralelo.
+   * "Nova (com licença)" = binário novo + uma chave da biblioteca, que é o que
+   * permite mais de uma sessão ao mesmo tempo.
+   */
+  handleChangeCloakEdition(e) {
+    const id = e.currentTarget.dataset.id;
+    const current = e.currentTarget.dataset.edition === 'pro' ? 'pro' : 'free';
+
+    const dialog = document.getElementById('cloak-edition-dialog');
+    const select = document.getElementById('cloak-edition-select');
+    if (!dialog || !select) return;
+
+    select.value = current;
+    dialog.classList.remove('hidden');
+
+    const cancelBtn = document.getElementById('cloak-edition-cancel');
+    const confirmBtn = document.getElementById('cloak-edition-confirm');
+    const newCancel = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+
+    newCancel.addEventListener('click', () => dialog.classList.add('hidden'));
+    newConfirm.addEventListener('click', async () => {
+      const edition = select.value;
+      if (edition === current) {
+        dialog.classList.add('hidden');
+        App.showToast('A instância já está nessa versão', 'error');
+        return;
+      }
+
+      newConfirm.classList.add('loading');
+      newConfirm.disabled = true;
+      try {
+        await API.post(`/instances/${id}/cloak-edition`, { edition });
+        App.showToast(
+          edition === 'pro'
+            ? 'CloakBrowser na versão nova (com licença). Reiniciando...'
+            : 'CloakBrowser na versão antiga (sem chave). Reiniciando...',
+          'success'
+        );
+        await Polling.fetchNow();
+      } catch (err) {
+        App.showToast(err.message || 'Erro ao trocar a versão', 'error');
+      } finally {
+        dialog.classList.add('hidden');
+        newConfirm.classList.remove('loading');
+        newConfirm.disabled = false;
+      }
+    });
   },
 
   /**

@@ -56,6 +56,51 @@ describe('imagem e identificação', () => {
       else process.env.CLOAKBROWSER_IMAGE = previous;
     }
   });
+
+  it('cada edição tem a sua imagem (antiga e nova podem coexistir)', () => {
+    const previous = process.env.CLOAKBROWSER_IMAGE_FREE;
+    process.env.CLOAKBROWSER_IMAGE_FREE = 'cloakhq/cloakbrowser:0.5.12';
+    try {
+      expect(cloakbrowser.editionOf({ cloakEdition: 'pro' })).toBe('pro');
+      expect(cloakbrowser.editionOf('free')).toBe('free');
+      expect(cloakbrowser.editionOf({})).toBe('free');
+
+      expect(cloakbrowser.baseImage('free')).toBe('cloakhq/cloakbrowser:0.5.12');
+      // A derivada acompanha a TAG da base: sem isso as duas versões
+      // sobrescrever-se-iam no host.
+      expect(cloakbrowser.image('free')).toBe('chrome-vpn-dashboard-browser:0.5.12');
+      expect(cloakbrowser.image('pro')).toBe('chrome-vpn-dashboard-browser:latest');
+    } finally {
+      if (previous === undefined) delete process.env.CLOAKBROWSER_IMAGE_FREE;
+      else process.env.CLOAKBROWSER_IMAGE_FREE = previous;
+    }
+  });
+});
+
+describe('chave de licença por instância', () => {
+  const FINGERPRINT_ENV = { timezone: 'Europe/Berlin', screen: { width: 1366, height: 768 } };
+
+  it('leva a chave da biblioteca quando a edição é a nova', () => {
+    const env = cloakbrowser.containerEnv({
+      cloakEdition: 'pro',
+      cloakLicenseKey: 'chave-da-instancia',
+      fingerprint: FINGERPRINT_ENV
+    });
+
+    expect(env).toContain('CLOAKBROWSER_LICENSE_KEY=chave-da-instancia');
+  });
+
+  it('na edição antiga não leva chave nenhuma — nem a do ambiente do dashboard', () => {
+    const previous = process.env.CLOAKBROWSER_LICENSE_KEY;
+    process.env.CLOAKBROWSER_LICENSE_KEY = 'chave-do-servico';
+    try {
+      const env = cloakbrowser.containerEnv({ cloakEdition: 'free', fingerprint: FINGERPRINT_ENV });
+      expect(env.some((item) => item.startsWith('CLOAKBROWSER_LICENSE_KEY='))).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.CLOAKBROWSER_LICENSE_KEY;
+      else process.env.CLOAKBROWSER_LICENSE_KEY = previous;
+    }
+  });
 });
 
 describe('semente do binário', () => {
@@ -254,12 +299,13 @@ describe('ambiente do container', () => {
     expect(cloakbrowser.containerEnv({})).toContain('TZ=Etc/UTC');
   });
 
-  it('repassa a licença só quando ela existe no ambiente', () => {
-    delete process.env.CLOAKBROWSER_LICENSE_KEY;
-    expect(cloakbrowser.containerEnv({ fingerprint: FINGERPRINT }).some((e) => e.startsWith('CLOAKBROWSER_LICENSE_KEY='))).toBe(false);
-
+  it('a licença deixou de vir do ambiente: agora é por instância (biblioteca)', () => {
+    // Antes a chave vinha de CLOAKBROWSER_LICENSE_KEY do serviço. Agora vem da
+    // biblioteca de chaves, por instância — o ambiente do dashboard NÃO licencia
+    // nada (senão a edição "antiga", sem chave, acabaria licenciada sem querer).
     process.env.CLOAKBROWSER_LICENSE_KEY = 'abc123';
-    expect(cloakbrowser.containerEnv({ fingerprint: FINGERPRINT })).toContain('CLOAKBROWSER_LICENSE_KEY=abc123');
+    expect(cloakbrowser.containerEnv({ fingerprint: FINGERPRINT })
+      .some((e) => e.startsWith('CLOAKBROWSER_LICENSE_KEY='))).toBe(false);
   });
 });
 

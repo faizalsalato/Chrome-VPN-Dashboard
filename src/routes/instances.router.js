@@ -223,6 +223,38 @@ router.post('/:id/country', async (req, res, next) => {
   }
 });
 
+// POST /api/instances/:id/cloak-edition - Troca a edição do CloakBrowser
+// ("free" = binário antigo sem chave; "pro" = binário novo com a chave da
+// biblioteca). Recria os containers preservando o perfil.
+router.post('/:id/cloak-edition', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'ID de instância inválido'
+      });
+    }
+
+    const edition = String((req.body && req.body.edition) || '').toLowerCase();
+    if (edition !== 'free' && edition !== 'pro') {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'Edição inválida (use "free" ou "pro")'
+      });
+    }
+
+    await instanceService.changeCloakEdition(id, edition);
+    res.json({
+      message: edition === 'pro'
+        ? 'CloakBrowser na versão nova (com licença)'
+        : 'CloakBrowser na versão antiga (sem chave)'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/instances/:id/proxy - Troca o proxy de uma instância proxy.
 // O corpo traz o id de um proxy da biblioteca (a senha fica no servidor).
 router.post('/:id/proxy', async (req, res, next) => {
