@@ -328,6 +328,10 @@ a:hover {
 
 .instance-grid {
   display: grid;
+  /* auto-fill com pista mínima fixa (340px). Em ecrãs estreitos o media query
+     (<=768px) troca para 1 coluna, por isso não há transbordo horizontal.
+     Nota: `minmax(min(340px, 100%), 1fr)` NÃO serve aqui — percentagens são
+     inválidas no `repeat(auto-fill, …)` e o browser descarta a regra toda. */
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 1.25rem;
 }
@@ -346,6 +350,9 @@ a:hover {
   border-radius: var(--radius-lg);
   padding: 1.25rem;
   transition: border-color var(--transition);
+  /* Impede que o conteúdo largo (badges/URLs) estique o cartão para fora da
+     coluna do grid — os filhos podem encolher e quebrar linha em vez de cortar. */
+  min-width: 0;
 }
 
 .instance-card:hover {
@@ -354,17 +361,22 @@ a:hover {
 
 .card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
 .card-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
   font-size: 1.0625rem;
   font-weight: 600;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .status-dot {
@@ -385,6 +397,9 @@ a:hover {
   font-weight: 600;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: flex-start;
 }
 
 .card-status.running { color: var(--success); background: rgba(76, 175, 80, 0.1); }
@@ -395,28 +410,38 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .card-info {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .info-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 0.25rem 0.75rem;
   font-size: 0.875rem;
+  min-width: 0;
 }
 
 .info-label {
   color: var(--text-secondary);
+  flex: 0 0 auto;
 }
 
 .info-value {
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .info-value a {
@@ -426,6 +451,9 @@ a:hover {
 .url-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 0.5rem;
 }
 
@@ -458,6 +486,7 @@ a:hover {
   border-radius: var(--radius);
   padding: 0.75rem;
   font-size: 0.8125rem;
+  min-width: 0;
 }
 
 .vpn-info .info-row {
@@ -485,6 +514,9 @@ a:hover {
   border: 1px solid var(--border);
   background-color: var(--bg-primary);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.5;
 }
 
 .type-badge.proxy {
@@ -629,15 +661,18 @@ a:hover {
   border-radius: var(--radius);
   padding: 0.75rem;
   font-size: 0.8125rem;
+  min-width: 0;
 }
 
 .proxy-info .info-row {
   font-size: 0.8125rem;
 }
 
-/* Card Actions */
+/* Card Actions — grade flexível: os botões quebram para a linha seguinte em vez
+   de encolher até o texto ficar ilegível (5 botões num cartão estreito). */
 .card-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 0.5rem;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -645,9 +680,12 @@ a:hover {
 }
 
 .card-actions .btn {
-  flex: 1;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.5rem 0.625rem;
   font-size: 0.8125rem;
-  padding: 0.625rem 0.75rem;
+  gap: 0.375rem;
+  white-space: nowrap;
 }
 
 /* ============================================
@@ -891,7 +929,7 @@ a:hover {
   }
 
   .card-actions {
-    flex-direction: column;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   }
 
   .card-actions .btn {
