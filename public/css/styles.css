@@ -1553,10 +1553,6 @@ body {
   text-align: right;
 }
 
-.fp-info .fp-loc {
-  font-weight: 600;
-}
-
 .fp-sync {
   display: inline-block;
   padding: 0.0625rem 0.5rem;

@@ -1,6 +1,7 @@
 /**
- * Card de fingerprint: mostra a localização usada no perfil e sinaliza quando
- * o fuso do fingerprint diverge do IP de saída.
+ * Card de fingerprint: mostra a identidade do perfil (SO/tela, fuso e idioma) e
+ * sinaliza quando o fuso do fingerprint diverge do IP de saída. A geo da conexão
+ * NÃO se repete aqui — o cartão já a mostra no bloco de cima.
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,14 +40,21 @@ function instanceWithFingerprint(overrides, extra) {
 }
 
 describe('FingerprintCard.render', () => {
-  it('mostra identidade, localização, fuso e idioma', () => {
+  it('mostra identidade, fuso e idioma', () => {
     const html = render(instanceWithFingerprint());
 
     expect(html).toContain('Windows · 1920x1080');
-    expect(html).toContain('Germany · Frankfurt');
     expect(html).toContain('Europe/Berlin');
     expect(html).toContain('de-DE');
     expect(html).toContain('fp-info');
+  });
+
+  it('não repete a geo da conexão (o cartão já a mostra no bloco de cima)', () => {
+    const html = render(instanceWithFingerprint());
+
+    expect(html).not.toContain('Localização');
+    expect(html).not.toContain('Germany · Frankfurt');
+    expect(html).not.toContain('fp-loc');
   });
 
   it('sem fingerprint não renderiza nada', () => {
@@ -75,30 +83,18 @@ describe('FingerprintCard.render', () => {
     expect(html).toContain('fp-sync-neutral');
   });
 
-  it('país sem cidade mostra apenas o país', () => {
-    const html = render(instanceWithFingerprint(
-      { geo: { country: 'Singapore', countryCode: 'SG', timezone: 'Asia/Singapore', source: 'vpn' } }
-    ));
-    expect(html).toContain('Singapore');
-    expect(html).not.toContain('Singapore ·');
-  });
-
-  it('neutraliza marcação vinda da geolocalização do IP', () => {
-    const html = render(instanceWithFingerprint({
-      geo: {
-        country: 'Germany', countryCode: 'DE',
-        city: '<img src=x onerror=alert(1)>',
-        timezone: 'Europe/Berlin', source: 'vpn'
-      }
+  it('neutraliza marcação vinda do IP de saída (título do selo)', () => {
+    const html = render(instanceWithFingerprint({}, {
+      vpnInfo: { timezone: '<img src=x onerror=alert(1)>' }
     }));
 
     expect(html).not.toContain('<img');
 
-    // O rótulo de localização não pode conter nada capaz de abrir tag ou
-    // atributo: sem <, >, aspas ou =, o resto vira texto inerte.
-    const label = html.match(/<span class="fp-loc">([\s\S]*?)<\/span>/);
-    expect(label).not.toBeNull();
-    expect(label[1]).not.toMatch(/[<>"'=]/);
+    // O fuso do IP entra no title do selo: sem <, >, aspas ou =, o resto vira
+    // texto inerte e não consegue abrir tag nem atributo.
+    const title = html.match(/<span class="fp-sync fp-sync-warn" title="([^"]*)"/);
+    expect(title).not.toBeNull();
+    expect(title[1]).not.toMatch(/[<>"'=]/);
   });
 
   it('fuso e idioma ausentes não quebram o card', () => {
