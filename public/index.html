@@ -129,12 +129,11 @@
           <select id="instance-browser" class="form-select">
             <option value="chromium" selected>Chromium</option>
             <option value="brave">Brave</option>
-            <option value="cloakbrowser">CloakBrowser (antidetect: tela + CDP)</option>
+            <option value="cloakbrowser">CloakBrowser (antidetect)</option>
           </select>
           <p id="browser-cdp-hint" class="form-hint hidden">
             O CloakBrowser tem os patches de fingerprint no próprio binário. A tela abre
-            pelo noVNC (como no Chromium) e a automação usa a URL de CDP em
-            Playwright/Puppeteer — os dois caminhos saem no mesmo endereço.
+            pelo cliente web do KasmVNC, no mesmo endereço do subdomínio.
           </p>
         </div>
         <div id="vpn-country-group">

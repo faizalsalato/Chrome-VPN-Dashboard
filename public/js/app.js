@@ -187,7 +187,7 @@ const App = {
       savedSel.addEventListener('change', () => ProxiesLib.applySavedPick(savedSel.value));
     }
 
-    // A nota do CDP só interessa quando o navegador escolhido é o CloakBrowser.
+    // A nota do CloakBrowser só interessa quando ele é o navegador escolhido.
     const browserSel = document.getElementById('instance-browser');
     if (browserSel && !browserSel.dataset.hintBound) {
       browserSel.dataset.hintBound = '1';
@@ -195,7 +195,7 @@ const App = {
     }
   },
 
-  /** Mostra a nota do CDP apenas com o CloakBrowser selecionado. */
+  /** Mostra a nota do CloakBrowser apenas com ele selecionado. */
   _syncBrowserHint() {
     const hint = document.getElementById('browser-cdp-hint');
     const browserSel = document.getElementById('instance-browser');

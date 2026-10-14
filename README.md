@@ -153,7 +153,7 @@ Consequências práticas:
 
 ### Como conectar
 
-O card da instância mostra o endereço CDP e o botão de copiar devolve a **URL de conexão** (`connect_over_cdp`):
+A URL de conexão do CDP sai pela API autenticada (`GET /api/instances`, campo `cdp.connectUrl`):
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -366,10 +366,11 @@ automaticamente pelo dashboard quando a instância é criada. O vhost encaminha
 `/json`, `/devtools` e `/fingerprint` para o CDP e o resto (`/`) para a tela do
 KasmVNC, tudo na mesma porta publicada (`BASE_PORT + id`).
 
-> **Live access do CloakBrowser:** abra
-> `https://chrome1.brave.rota.ath.cx/?autoconnect=1&resize=scale&path=websockify`.
-> O WebSocket do KasmVNC fica em `/websockify` (o cliente noVNC envia o header
-> `Sec-WebSocket-Origin`; o vhost já faz o `sub_filter` `ws://`→`wss://`).
+> **Live access do CloakBrowser:** abra `https://chrome1.brave.rota.ath.cx/`.
+> O link é o subdomínio puro, **sem query string**: parâmetros como
+> `resize=scale` faziam o cliente redimensionar a tela e encolhiam a janela do
+> navegador. O WebSocket do KasmVNC fica em `/websockify` (o cliente noVNC envia
+> o header `Sec-WebSocket-Origin`; o vhost já faz o `sub_filter` `ws://`→`wss://`).
 
 ## Países Disponíveis
 

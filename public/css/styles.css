@@ -498,7 +498,7 @@ a:hover {
   border-color: #fb542b;
 }
 
-/* CloakBrowser: antidetect por CDP (ícone SVG, não emoji) */
+/* CloakBrowser: antidetect (ícone SVG, não emoji) */
 .type-badge.cloakbrowser {
   display: inline-flex;
   align-items: center;
@@ -510,20 +510,6 @@ a:hover {
 .type-badge.cloakbrowser .icon {
   width: 0.95em;
   height: 0.95em;
-}
-
-/* Aviso curto abaixo do endereço CDP no cartão da instância */
-.cdp-hint {
-  margin: 0.35rem 0 0;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-
-.cdp-hint code {
-  font-family: 'Courier New', monospace;
-  font-size: 0.95em;
-  color: var(--text-secondary);
 }
 
 .type-badge.chromium {

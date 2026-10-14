@@ -32,9 +32,10 @@ const PLATFORMS = [
   { ua: 'Macintosh; Intel Mac OS X 10_15_7', platform: 'MacIntel', vendor: 'Apple Computer, Inc.' }
 ];
 // Resolução única: a de um notebook comum (1366x768), que é o que o usuário vê
-// na tela — o X do container nasce nesse tamanho e o `resize=scale` só o encaixa
-// na janela. 1536x864 e 1280x720 ficaram de fora por serem a resolução padrão do
-// Chrome headless (denunciavam o container); 1366x768 é monitor/tela real.
+// na tela — o X do container nasce nesse tamanho, igual ao que o perfil anuncia
+// nas flags `--fingerprint-screen-*`. 1536x864 e 1280x720 ficaram de fora por
+// serem a resolução padrão do Chrome headless (denunciavam o container);
+// 1366x768 é monitor/tela real.
 // De propósito NÃO é uma lista com sorteio: todo perfil usa o mesmo tamanho.
 const SCREENS = [
   [1366, 768]

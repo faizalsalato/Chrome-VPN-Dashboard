@@ -192,12 +192,12 @@ const Instances = {
    *
    * Chromium/Brave: uma URL só, a área de trabalho deles.
    *
-   * CloakBrowser: duas. A "Tela" é o cliente do KasmVNC servido pelo próprio
-   * container do navegador; o "CDP" é o endereço que o Playwright e o Puppeteer
-   * usam em `connect_over_cdp` — já com o fingerprint alinhado.
+   * CloakBrowser: a "Tela" é o cliente do KasmVNC servido pelo próprio
+   * container do navegador (o endereço é limpo, sem query string: parâmetros
+   * de resize encolhiam a janela do navegador).
    */
   accessRow(instance, url, domain) {
-    if (!instance.cdp) {
+    if (!instance.vnc) {
       return `<div class="info-row">
               <span class="info-label">URL</span>
               <div class="url-row">
@@ -207,32 +207,20 @@ const Instances = {
             </div>`;
     }
 
-    const vncUrl = instance.vnc ? instance.vnc.url : url;
+    const vncUrl = instance.vnc.url;
 
     return `<div class="info-row">
               <span class="info-label">Tela</span>
               <div class="url-row">
                 <a href="${vncUrl}" target="_blank" rel="noopener" class="info-value">${domain}</a>
-                <button class="copy-btn" data-url="${vncUrl}" title="Copiar URL da tela (KasmVNC)">📋</button>
+                <button class="copy-btn" data-url="${vncUrl}" title="Copiar URL da tela">📋</button>
               </div>
-            </div>
-            <div class="info-row">
-              <span class="info-label">CDP</span>
-              <div class="url-row">
-                <a href="${instance.cdp.discoveryUrl}" target="_blank" rel="noopener" class="info-value">${domain}/json</a>
-                <button class="copy-btn" data-url="${instance.cdp.connectUrl}"
-                        title="Copiar URL de conexão (connect_over_cdp)">📋</button>
-              </div>
-            </div>
-            <p class="cdp-hint">
-              Tela pelo KasmVNC (com área de transferência nos dois sentidos); automação pela URL do
-              <code>CDP</code> em <code>connect_over_cdp()</code>.
-            </p>`;
+            </div>`;
   },
 
   /** Botão de abrir a tela no card (só o CloakBrowser tem tela própria). */
   desktopButton(instance) {
-    if (!instance.cdp || !instance.vnc) return '';
+    if (!instance.vnc) return '';
     if (instance.status !== 'running') return '';
 
     return `<a class="btn btn-secondary btn-sm" href="${instance.vnc.url}"
@@ -247,7 +235,7 @@ const Instances = {
       return `<span class="type-badge brave" title="Navegador: Brave">🦁 Brave</span>`;
     }
     if (browser === 'cloakbrowser') {
-      return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect por CDP)">` +
+      return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect)">` +
         `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ` +
         `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
         `<path d="M12 3a7 7 0 0 0-7 7v10l2.5-2L10 20l2-2 2 2 2.5-2L19 20V10a7 7 0 0 0-7-7z"/>` +

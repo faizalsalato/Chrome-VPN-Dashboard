@@ -71,11 +71,6 @@ const PASSTHROUGH_ENV = [
   'CLOAKBROWSER_LICENSE_KEY',
   'CLOAKBROWSER_FETCH_WIDEVINE'
 ];
-// Consulta do cliente do KasmVNC: conecta sozinho e ajusta a imagem à janela.
-// `resize=scale` (e não `remote`) é deliberado: o X fica no tamanho que o
-// perfil anuncia — se o KasmVNC redimensionasse o X para o tamanho da janela do
-// usuário, a tela deixaria de bater com o `--fingerprint-screen-*`.
-const DESKTOP_QUERY = 'autoconnect=1&resize=scale&path=websockify';
 // Campos do fingerprint que viram `--fingerprint-<nome>=<valor>`.
 // O `cloakserve` faz exatamente este mapeamento nas conexões CDP; aqui as
 // mesmas chaves entram como flags de lançamento (valem para o processo todo).
@@ -312,11 +307,12 @@ class CloakBrowserService {
 
   /**
    * URL da tela (cliente web do KasmVNC), servida na raiz do subdomínio pelo
-   * roteador. Os parâmetros fazem o cliente conectar sozinho e escalar a imagem
-   * para a janela sem mexer no X (ver DESKTOP_QUERY).
+   * roteador. Sem query string: parâmetros como `resize=scale` faziam o cliente
+   * redimensionar a tela e encolhiam a janela do navegador — o X tem de ficar
+   * no tamanho que o perfil anuncia (`--fingerprint-screen-*`).
    */
   desktopUrl(subdomain) {
-    return `https://${subdomain}/?${DESKTOP_QUERY}`;
+    return `https://${subdomain}/`;
   }
 
   /**
@@ -358,7 +354,6 @@ module.exports.DEFAULT_IMAGE = browserImage.DEFAULT_IMAGE;
 module.exports.DEFAULT_BASE_IMAGE = browserImage.DEFAULT_BASE_IMAGE;
 module.exports.DEFAULT_SCREEN = DEFAULT_SCREEN;
 module.exports.SCREEN_ENV = SCREEN_ENV;
-module.exports.DESKTOP_QUERY = DESKTOP_QUERY;
 module.exports.CDP_PORT = CDP_PORT;
 module.exports.CDP_PORT_NUMBER = CDP_PORT_NUMBER;
 module.exports.SCREEN_PORT = SCREEN_PORT;

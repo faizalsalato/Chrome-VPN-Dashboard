@@ -36,8 +36,8 @@ function commandLine(config) {
 }
 
 describe('imagem e identificação', () => {
-  it('usa a imagem oficial do CloakBrowser', () => {
-    expect(cloakbrowser.image()).toBe('cloakhq/cloakbrowser:latest');
+  it('usa a imagem derivada local (KasmVNC) nas instâncias', () => {
+    expect(cloakbrowser.image()).toBe('chrome-vpn-dashboard-browser:latest');
   });
 
   it('reconhece só o valor "cloakbrowser"', () => {
@@ -46,11 +46,11 @@ describe('imagem e identificação', () => {
     expect(cloakbrowser.isCloakBrowser(undefined)).toBe(false);
   });
 
-  it('permite fixar outra imagem por ambiente (imagem corporativa/espelho)', () => {
+  it('permite fixar a imagem base oficial por ambiente', () => {
     const previous = process.env.CLOAKBROWSER_IMAGE;
     process.env.CLOAKBROWSER_IMAGE = 'espelho.local/cloakbrowser:146';
     try {
-      expect(cloakbrowser.image()).toBe('espelho.local/cloakbrowser:146');
+      expect(cloakbrowser.baseImage()).toBe('espelho.local/cloakbrowser:146');
     } finally {
       if (previous === undefined) delete process.env.CLOAKBROWSER_IMAGE;
       else process.env.CLOAKBROWSER_IMAGE = previous;
@@ -270,13 +270,11 @@ describe('endereços públicos da instância', () => {
       .toBe('http://chrome4.sakr.ath.cx');
   });
 
-  it('aponta a tela para o cliente do KasmVNC na raiz do subdomínio', () => {
-    const esperado = `https://chrome4.sakr.ath.cx/?${cloakbrowser.DESKTOP_QUERY}`;
+  it('aponta a tela para o cliente do KasmVNC na raiz do subdomínio (sem query)', () => {
+    const esperado = 'https://chrome4.sakr.ath.cx/';
 
     expect(cloakbrowser.desktopUrl('chrome4.sakr.ath.cx')).toBe(esperado);
     expect(cloakbrowser.describe('chrome4.sakr.ath.cx', FINGERPRINT).desktopUrl).toBe(esperado);
-    // Escala local: o X precisa continuar no tamanho que o perfil anuncia.
-    expect(cloakbrowser.DESKTOP_QUERY).toContain('resize=scale');
   });
 });
 
