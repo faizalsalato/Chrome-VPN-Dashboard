@@ -107,6 +107,18 @@ class CloakBrowserService {
     return browser === 'cloakbrowser';
   }
 
+  /**
+   * Esconder o infobar de `--no-sandbox` com `--test-type`? É opt-in
+   * (CLOAKBROWSER_TEST_TYPE=1) por causa do trade-off: o `--test-type` marca o
+   * browser como "modo de teste", o que alguns serviços de login e detectores
+   * de anti-bot conseguem ver. Só liga quem aceita esse custo em troca de
+   * esconder o aviso cosmético.
+   */
+  testType() {
+    const value = String(process.env.CLOAKBROWSER_TEST_TYPE || '').toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+  }
+
   /** URL do proxy com credenciais inline (o binário aceita user:pass na URL). */
   proxyUrl(proxy) {
     if (!proxy || !proxy.host || !proxy.port) return null;
@@ -250,6 +262,15 @@ class CloakBrowserService {
       'exec',
       CHROME_BINARY,
       '--no-sandbox',
+      // Esconde o infobar amarelo "You are using an unsupported command-line
+      // flag: --no-sandbox" que o Chromium mostra em modo headed. É obrigatório
+      // aqui porque o container corre como root e o AppArmor do host
+      // (apparmor_restrict_unprivileged_userns=1) impede o sandbox de
+      // namespaces — sem `--no-sandbox` o binário nem arranca. Ressalva: o
+      // `--test-type` marca o browser como "modo de teste", o que alguns
+      // serviços (login Google) e detectores conseguem ver; por isso só entra
+      // quando explicitamente ligado por CLOAKBROWSER_TEST_TYPE (ver abaixo).
+      ...(this.testType() ? ['--test-type'] : []),
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-dev-shm-usage',
