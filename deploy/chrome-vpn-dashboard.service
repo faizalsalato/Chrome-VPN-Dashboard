@@ -15,9 +15,16 @@ Environment=JWT_SECRET=TROQUE-POR-UM-SEGREDO-FORTE
 Environment=SESSION_EXPIRY=86400
 Environment=ADMIN_USER=admin
 Environment=ADMIN_PASS=TROQUE-ESTA-SENHA
-Environment=NGINX_ENABLED=false
+Environment=NGINX_ENABLED=true
 Environment=PROXY_INJECTOR_BASE_PORT=8150
 Environment=CERTBOT_EMAIL=admin@brave.rota.ath.cx
+# CloakBrowser / KasmVNC (tela + áudio) e envio de ficheiros sem teto
+Environment=CLOAKBROWSER_IMAGE=cloakhq/cloakbrowser:latest
+Environment=BROWSER_IMAGE=chrome-vpn-dashboard-browser:latest
+Environment=KASM_PORT=9225
+Environment=AUDIO_RATE=24000
+Environment=AUDIO_CHANNELS=1
+Environment=MAX_UPLOAD_BYTES=0
 ExecStart=/usr/bin/node src/server.js
 Restart=always
 RestartSec=3

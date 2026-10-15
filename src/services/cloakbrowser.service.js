@@ -119,7 +119,13 @@ const PASSTHROUGH_ENV = [
   'CLOAKBROWSER_FETCH_WIDEVINE',
   // Permitem travar a versão/canal do binário que a edição "nova" baixa.
   'CLOAKBROWSER_VERSION',
-  'CLOAKBROWSER_RELEASE_CHANNEL'
+  'CLOAKBROWSER_RELEASE_CHANNEL',
+  // Áudio do container (ver deploy/browser-image/audio-bridge.py): a taxa e os
+  // canais do PCM que vai para o cliente web. Ficam no serviço porque é daqui
+  // que sai o ambiente do container — sem isto, a variável posta no dashboard
+  // não chegaria ao `audio-start.sh`.
+  'AUDIO_RATE',
+  'AUDIO_CHANNELS'
 ];
 // Campos do fingerprint que viram `--fingerprint-<nome>=<valor>`.
 // O `cloakserve` faz exatamente este mapeamento nas conexões CDP; aqui as

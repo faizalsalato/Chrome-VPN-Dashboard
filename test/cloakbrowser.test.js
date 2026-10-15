@@ -403,6 +403,25 @@ describe('ambiente do container', () => {
     expect(cloakbrowser.containerEnv({ fingerprint: FINGERPRINT })
       .some((e) => e.startsWith('CLOAKBROWSER_LICENSE_KEY='))).toBe(false);
   });
+
+  it('passa a taxa e os canais do áudio para o container', () => {
+    // Quem lê estas variáveis é o audio-start.sh, DENTRO do container: sem o
+    // repasse, defini-las no dashboard não teria efeito nenhum.
+    const anterior = { rate: process.env.AUDIO_RATE, channels: process.env.AUDIO_CHANNELS };
+    process.env.AUDIO_RATE = '32000';
+    process.env.AUDIO_CHANNELS = '2';
+
+    try {
+      const env = cloakbrowser.containerEnv({ fingerprint: FINGERPRINT });
+      expect(env).toContain('AUDIO_RATE=32000');
+      expect(env).toContain('AUDIO_CHANNELS=2');
+    } finally {
+      if (anterior.rate === undefined) delete process.env.AUDIO_RATE;
+      else process.env.AUDIO_RATE = anterior.rate;
+      if (anterior.channels === undefined) delete process.env.AUDIO_CHANNELS;
+      else process.env.AUDIO_CHANNELS = anterior.channels;
+    }
+  });
 });
 
 describe('endereços públicos da instância', () => {

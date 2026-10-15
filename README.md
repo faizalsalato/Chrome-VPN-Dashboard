@@ -273,38 +273,49 @@ O mascaramento atua **dentro da página** (JS, via content script em `world: "MA
 ```
 dashboard/
 ├── src/
-│   ├── server.js              # Express (porta 3100)
-│   ├── database.js            # SQLite
+│   ├── server.js              # Express (PORT do ambiente; 3100 por omissão)
+│   ├── database.js            # SQLite + migrações (colunas novas entram sozinhas)
 │   ├── middleware/
-│   │   └── auth.middleware.js # JWT verification
+│   │   └── auth.middleware.js # Verificação do JWT
 │   ├── routes/
 │   │   ├── auth.router.js     # Login/logout/verify
-│   │   └── instances.router.js # CRUD instâncias
+│   │   ├── instances.router.js # Instâncias: CRUD, start/stop, país, proxy, ficheiros, editar
+│   │   ├── proxies.router.js  # Biblioteca de proxies (+ teste e geo)
+│   │   ├── vpn.router.js      # Credenciais dos provedores VPN
+│   │   └── cloak-licenses.router.js # Chaves do CloakBrowser (verificar/atualizar)
 │   ├── browser/
-│   │   └── cdp-tunnel.py      # Encaminhador do CDP (0.0.0.0:9223 → loopback 9222)
+│   │   └── port-router.py     # UMA porta por instância: CDP + tela + áudio, por caminho
 │   └── services/
-│       ├── auth.service.js    # JWT + rate limiting
-│       ├── docker.service.js  # Gerenciamento containers
-│       ├── chrome-container.service.js # Spec do container do navegador
+│       ├── auth.service.js              # JWT + rate limiting
+│       ├── docker.service.js            # Ciclo de vida dos containers + putArchive
+│       ├── chrome-container.service.js  # Spec do container do navegador
 │       ├── gluetun-container.service.js # Spec do container do túnel
-│       ├── cloakbrowser.service.js # Regras do CloakBrowser (flags + comando com o túnel do CDP)
-│       ├── vnc-viewer.service.js # Tela do CloakBrowser (x11vnc + noVNC)
-│       ├── instance.service.js # Orquestrador
-│       ├── nginx.service.js   # Config Nginx + SSL
-│       ├── vpn.service.js     # Status VPN via IP geolocation
-│       └── proxy-injector.service.js # Forwarder TCP p/ proxy autenticado
+│       ├── cloakbrowser.service.js      # Regras do CloakBrowser (flags, comando, política)
+│       ├── browser-image.service.js     # Imagem derivada (KasmVNC + áudio) e a sua receita
+│       ├── bookmarks.service.js         # Marcadores semeados em cada perfil
+│       ├── profile-files.service.js     # Ficheiros enviados para o perfil (Downloads)
+│       ├── cloak-licenses.service.js    # Biblioteca de chaves (validate + session/count)
+│       ├── instance.service.js          # Orquestrador (criar, editar, renomear, trocar saída)
+│       ├── nginx.service.js             # Vhost + cert de cada instância
+│       ├── vpn.service.js               # Status da VPN via geo do IP de saída
+│       ├── proxies.service.js           # CRUD e geo dos proxies
+│       └── proxy-injector.service.js    # Forwarder TCP p/ proxy autenticado
 ├── public/
 │   ├── index.html             # Dashboard
 │   ├── login.html             # Login
 │   ├── css/styles.css         # Tema escuro responsivo
-│   └── js/                    # Frontend SPA
+│   └── js/                    # Frontend SPA (vpn-countries.js = países por provedor)
 ├── deploy/
-│   └── vnc-viewer/            # Dockerfile + entrypoint do viewer noVNC
+│   ├── browser-image/         # Dockerfile da imagem do navegador + áudio (PulseAudio + ponte)
+│   ├── nginx-dashboard.conf   # Vhost de referência do painel (client_max_body_size 0)
+│   ├── setup-nginx.sh         # Vhost do painel só em HTTP (instalações simples)
+│   └── chrome-vpn-dashboard.service # Unit systemd de referência
+├── test/                      # Jest (a suite corre no servidor, com Docker disponível)
+├── mitm-proxy/                # Proxy MITM auxiliar (opcional)
 ├── data/                      # SQLite (auto-criado)
 ├── package.json
-├── Dockerfile
-├── install-and-run.sh
-└── setup-nginx.sh
+├── Dockerfile                 # Imagem só do painel (API + web); Docker/nginx ficam no host
+└── install-and-run.sh         # Instalação completa: Node, systemd, nginx, certbot, swap
 ```
 
 ## API Endpoints

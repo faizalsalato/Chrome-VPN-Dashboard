@@ -47,6 +47,16 @@ fi
 
 echo "✅ Node.js $(node --version)"
 
+# O dashboard cria containers (navegador, gluetun) e fala com o Docker do host.
+# Sem ele o painel sobe, mas nenhuma instância é criada.
+if ! command -v docker &> /dev/null; then
+  echo "⚠️  Docker não encontrado — instale-o antes de criar instâncias."
+elif ! docker info &> /dev/null; then
+  echo "⚠️  Docker instalado, mas o daemon não responde: verifique 'systemctl status docker'."
+else
+  echo "✅ Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
+fi
+
 # 2. Criar diretório da aplicação
 sudo mkdir -p "$APP_DIR"
 sudo cp -r . "$APP_DIR/"
@@ -82,10 +92,16 @@ NGINX_ENABLED=true
 PROXY_INJECTOR_BASE_PORT=$PROXY_INJECTOR_BASE_PORT
 CERTBOT_EMAIL=$EMAIL
 # CloakBrowser (antidetect). Imagem oficial + imagem derivada local com
-# KasmVNC (ver deploy/browser-image/Dockerfile).
+# KasmVNC e áudio (ver deploy/browser-image/).
 CLOAKBROWSER_IMAGE=cloakhq/cloakbrowser:latest
 BROWSER_IMAGE=chrome-vpn-dashboard-browser:latest
 KASM_PORT=9225
+# Áudio do container: taxa e canais do PCM que vai para o cliente web
+# (24000 x 1 canal ≈ 48 kB/s). Ver deploy/browser-image/audio-bridge.py.
+AUDIO_RATE=24000
+AUDIO_CHANNELS=1
+# Envio de ficheiros para o perfil: 0 = SEM teto (o limite é o disco).
+MAX_UPLOAD_BYTES=0
 EOF
 
   echo "⚠️  Edite $APP_DIR/.env (referência) e o JWT_SECRET no unit systemd!"
@@ -121,10 +137,13 @@ Environment=ADMIN_PASS=${ADMIN_PASS:-admin123}
 Environment=NGINX_ENABLED=true
 Environment=PROXY_INJECTOR_BASE_PORT=$PROXY_INJECTOR_BASE_PORT
 Environment=CERTBOT_EMAIL=$EMAIL
-# CloakBrowser / KasmVNC
+# CloakBrowser / KasmVNC (tela + áudio) e envio de ficheiros
 Environment=CLOAKBROWSER_IMAGE=cloakhq/cloakbrowser:latest
 Environment=BROWSER_IMAGE=chrome-vpn-dashboard-browser:latest
 Environment=KASM_PORT=9225
+Environment=AUDIO_RATE=24000
+Environment=AUDIO_CHANNELS=1
+Environment=MAX_UPLOAD_BYTES=0
 ExecStart=/usr/bin/node src/server.js
 Restart=always
 RestartSec=3
@@ -147,8 +166,15 @@ server {
     listen 80;
     server_name $BASE_DOMAIN;
 
+    # Envio de ficheiros para o perfil da instância (botão ⬆ Enviar): SEM teto de
+    # corpo — o padrão do nginx é 1 MB, que barrava até fotos. O pedido também
+    # não é bufferizado: o ficheiro passa direto para o dashboard, que o grava
+    # em streaming (o limite real é o espaço em disco).
+    client_max_body_size 0;
+
     location / {
         proxy_pass http://localhost:$DASHBOARD_PORT;
+        proxy_request_buffering off;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -178,11 +204,17 @@ echo "✅ Nginx configurado (HTTP)"
 echo "🔒 Obtendo certificado SSL..."
 certbot --nginx -d "$BASE_DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect
 
-# 4. MEMORIA SWAP
-sudo fallocate -l 12G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
+# 4. MEMORIA SWAP (uma vez: repetir o install não recria o ficheiro)
+if ! swapon --show | grep -q '/swapfile'; then
+  if [ ! -f /swapfile ]; then
+    sudo fallocate -l "${SWAP_SIZE:-12G}" /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+  fi
+  sudo swapon /swapfile
+fi
+# A swap tem de voltar depois de um reboot.
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
 
 echo ""
 echo "✅ Dashboard instalado e rodando na porta $PORT!"
