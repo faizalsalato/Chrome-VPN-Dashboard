@@ -37,6 +37,11 @@ const CDP_PORT_NUMBER = 9222;
 // fala com ela é o roteador. Nada de expor o cliente web direto.
 const SCREEN_PORT = '9225/tcp';
 const SCREEN_PORT_NUMBER = 9225;
+// Porta da ponte de áudio DENTRO do container (ver deploy/browser-image/
+// audio-bridge.py): o KasmVNC não transmite som, então a imagem sobe um
+// PulseAudio com sink virtual e a ponte entrega esse som em PCM no caminho
+// `/audio`. Também fica no loopback — quem publica é o roteador.
+const AUDIO_PORT_NUMBER = 9226;
 // A ÚNICA porta que sai do container: o roteador (CDP + tela por caminho).
 const ROUTER_PORT = '9223/tcp';
 const ROUTER_PORT_NUMBER = 9223;
@@ -312,6 +317,7 @@ class CloakBrowserService {
       ROUTER_END_MARKER,
       `python3 ${ROUTER_CONTAINER_PATH}` +
         ` --listen ${ROUTER_PORT_NUMBER} --cdp ${CDP_PORT_NUMBER} --screen ${SCREEN_PORT_NUMBER}` +
+        ` --audio ${AUDIO_PORT_NUMBER}` +
         ' >/tmp/port-router.log 2>&1 &'
     ].join('\n');
   }
@@ -569,6 +575,7 @@ module.exports.CDP_PORT = CDP_PORT;
 module.exports.CDP_PORT_NUMBER = CDP_PORT_NUMBER;
 module.exports.SCREEN_PORT = SCREEN_PORT;
 module.exports.SCREEN_PORT_NUMBER = SCREEN_PORT_NUMBER;
+module.exports.AUDIO_PORT_NUMBER = AUDIO_PORT_NUMBER;
 module.exports.ROUTER_PORT = ROUTER_PORT;
 module.exports.ROUTER_PORT_NUMBER = ROUTER_PORT_NUMBER;
 module.exports.ROUTER_CONTAINER_PATH = ROUTER_CONTAINER_PATH;

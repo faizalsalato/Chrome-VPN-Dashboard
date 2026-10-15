@@ -1,0 +1,12 @@
+### Áudio do dashboard: sink virtual + socket aberto para o root.
+###
+### Sem isto não há som nenhum: o container não tem placa de áudio, então o
+### Chrome precisa de um sink de verdade para onde mandar o som — e é o MONITOR
+### desse sink que a ponte de áudio (audio-bridge.py) transmite.
+###
+### O socket separado (/tmp/pulse-native) é o que o Chrome e o `parec` usam (via
+### PULSE_SERVER): o pulseaudio em modo sistema recusa clientes sem cookie, e
+### este aceita porque só existe dentro do container.
+load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse-native
+load-module module-null-sink sink_name=virtual sink_properties=device.description=VirtualAudio
+set-default-sink virtual

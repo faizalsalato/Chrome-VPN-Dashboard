@@ -150,7 +150,8 @@ describe('comando do container (Chrome com janela no X do container)', () => {
     expect(line).toContain(
       `python3 ${cloakbrowser.ROUTER_CONTAINER_PATH} ` +
       `--listen ${cloakbrowser.ROUTER_PORT_NUMBER} --cdp ${cloakbrowser.CDP_PORT_NUMBER}` +
-      ` --screen ${cloakbrowser.SCREEN_PORT_NUMBER}`
+      ` --screen ${cloakbrowser.SCREEN_PORT_NUMBER}` +
+      ` --audio ${cloakbrowser.AUDIO_PORT_NUMBER}`
     );
     // O roteador vem primeiro: o `exec` do Chrome é a última coisa da linha.
     expect(line.indexOf('port-router.py')).toBeLessThan(line.indexOf('exec /root/.cloakbrowser'));
@@ -338,6 +339,9 @@ describe('roteador da porta publicada', () => {
     // A tela do KasmVNC nunca é publicada: quem fala com ela é o roteador.
     expect(cloakbrowser.SCREEN_PORT).toBe('9225/tcp');
     expect(cloakbrowser.SCREEN_PORT_NUMBER).toBe(9225);
+    // A ponte de áudio (o KasmVNC não transmite som) também só existe no
+    // loopback: quem a publica é o roteador, no caminho /audio.
+    expect(cloakbrowser.AUDIO_PORT_NUMBER).toBe(9226);
   });
 
   it('embute o programa real do repositório, sem quebrar o heredoc', () => {
@@ -362,6 +366,9 @@ describe('roteador da porta publicada', () => {
     for (const caminho of ['/json', '/devtools', '/fingerprint']) {
       expect(programa).toContain(caminho);
     }
+    // E o do áudio, que sai da mesma porta publicada.
+    expect(programa).toContain('/audio');
+    expect(programa).toContain('--audio');
   });
 });
 

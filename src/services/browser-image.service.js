@@ -14,6 +14,7 @@
  * host, na primeira instância CloakBrowser. Como ela deriva da imagem oficial
  * (que já está no host para rodar qualquer perfil), o custo é uma camada.
  */
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Docker = require('dockerode');
@@ -23,8 +24,17 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 const DEFAULT_IMAGE = 'chrome-vpn-dashboard-browser:latest';
 // Imagem oficial por baixo (a mesma que o dashboard usaria sem este patch).
 const DEFAULT_BASE_IMAGE = 'cloakhq/cloakbrowser:latest';
-// Só o Dockerfile entra no contexto de build.
-const BUILD_CONTEXT = ['Dockerfile'];
+// O que entra no contexto de build: o Dockerfile e o que ele copia para dentro
+// da imagem (o áudio do container: sink virtual, ponte, arranque e cliente).
+const BUILD_CONTEXT = [
+  'Dockerfile',
+  'pulse-virtual.pa',
+  'audio-bridge.py',
+  'audio-start.sh',
+  'kasm-audio.js'
+];
+// Etiqueta que guarda a impressão da receita na imagem construída.
+const RECIPE_LABEL = 'dashboard.recipe';
 
 /** Converte CRLF → LF (o repositório é editado no Windows). */
 function toLf(content) {
@@ -78,21 +88,44 @@ class BrowserImageService {
   }
 
   /**
+   * Impressão da RECEITA da imagem: o Dockerfile e todos os arquivos que ele
+   * copia, com os mesmos fins de linha que o build usa.
+   *
+   * Por que existe: a imagem é construída UMA vez por host e nunca mais. Sem
+   * esta impressão, mudar o Dockerfile (como a entrada do áudio) não teria
+   * efeito nenhum nos hosts que já têm a imagem antiga — a instância continuaria
+   * a subir sem som. Com ela, a imagem antiga é reconhecida e reconstruída.
+   */
+  recipe() {
+    const hash = crypto.createHash('sha256');
+    for (const name of BUILD_CONTEXT) {
+      hash.update(name);
+      hash.update(toLf(fs.readFileSync(path.join(this.sourceDir(), name), 'utf-8')));
+    }
+    return hash.digest('hex').slice(0, 16);
+  }
+
+  /**
    * Garante a imagem derivada de uma base. Ela é local (não vem de registry),
    * então "não existe" significa "construir", nunca "baixar".
    */
   async ensureImage(baseImage) {
     const base = baseImage || this.baseImage();
     const image = this.imageFor(base);
+    const recipe = this.recipe();
     try {
-      await docker.getImage(image).inspect();
-      return image;
+      const info = await docker.getImage(image).inspect();
+      // A etiqueta diz de que receita a imagem veio: sem ela (imagem de antes
+      // desta marcação) ou com impressão diferente, a imagem não serve — é o
+      // que faz uma mudança no Dockerfile chegar às instâncias já existentes.
+      if (((info.Config || {}).Labels || {})[RECIPE_LABEL] === recipe) return image;
+      console.log(`[INFO] [browser-image] ${image} veio de uma receita antiga — reconstruindo...`);
     } catch (err) {
       if (err.statusCode !== 404) throw err;
     }
 
     console.log(`[INFO] [browser-image] Construindo ${image} a partir de ${base}...`);
-    await this._buildImage(image, base);
+    await this._buildImage(image, base, recipe);
     console.log(`[INFO] [browser-image] Imagem do navegador pronta (${image})`);
     return image;
   }
@@ -102,7 +135,7 @@ class BrowserImageService {
    * normalizados para LF — o build precisa de funcionar mesmo com o repositório
    * editado no Windows.
    */
-  async _buildImage(image, base) {
+  async _buildImage(image, base, recipe) {
     const context = fs.mkdtempSync(path.join(require('os').tmpdir(), 'browser-image-'));
 
     try {
@@ -112,7 +145,11 @@ class BrowserImageService {
       }
       const stream = await docker.buildImage(
         { context, src: BUILD_CONTEXT },
-        { t: image, buildargs: { BROWSER_BASE_IMAGE: base } }
+        {
+          t: image,
+          buildargs: { BROWSER_BASE_IMAGE: base },
+          labels: { [RECIPE_LABEL]: recipe }
+        }
       );
       await new Promise((resolve, reject) => {
         docker.modem.followProgress(stream, (err) => (err ? reject(err) : resolve()));
@@ -127,4 +164,5 @@ module.exports = new BrowserImageService();
 module.exports.DEFAULT_IMAGE = DEFAULT_IMAGE;
 module.exports.DEFAULT_BASE_IMAGE = DEFAULT_BASE_IMAGE;
 module.exports.BUILD_CONTEXT = BUILD_CONTEXT;
+module.exports.RECIPE_LABEL = RECIPE_LABEL;
 module.exports.toLf = toLf;

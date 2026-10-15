@@ -31,18 +31,37 @@ FROM ${BROWSER_BASE_IMAGE}
 # wget/ca-certificates são só para o download do .deb; xclip é o que a área de
 # transferência do KasmVNC usa para ler/escrever a seleção do X.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends wget ca-certificates xclip \
+ && apt-get install -y --no-install-recommends wget ca-certificates xclip pulseaudio pulseaudio-utils \
  && ARCH="$(dpkg --print-architecture)" \
  && wget -q "https://github.com/kasmtech/KasmVNC/releases/download/v1.3.3/kasmvncserver_bookworm_1.3.3_${ARCH}.deb" \
  && apt-get install -y -f "./kasmvncserver_bookworm_1.3.3_${ARCH}.deb" \
  && rm -f "./kasmvncserver_bookworm_1.3.3_${ARCH}.deb" \
  && rm -rf /var/lib/apt/lists/* \
  && command -v Xvnc \
- && test -d /usr/share/kasmvnc/www
+ && command -v parec && test -d /usr/share/kasmvnc/www
 
 # KasmVNC guarda configuração por usuário em ~/.vnc; o diretório precisa existir
 # antes do primeiro start (o container roda como root).
 RUN mkdir -p /root/.vnc
+
+# Áudio do container. Os quatro arquivos vêm do repositório (o contexto de build
+# é só esta pasta) e o COPY acontece depois do KasmVNC porque o cliente web
+# (`kasm-audio.js`) é servido de dentro do www dele.
+COPY pulse-virtual.pa /usr/local/share/pulse-virtual.pa
+COPY audio-bridge.py /usr/local/bin/audio-bridge.py
+COPY audio-start.sh /usr/local/bin/audio-start.sh
+COPY kasm-audio.js /usr/share/kasmvnc/www/kasm-audio.js
+
+# O sink virtual entra no system.pa (é o arquivo que o `pulseaudio --system` lê)
+# e o cliente é injetado no index.html do KasmVNC. Os modos de execução são
+# fixados à mão porque o repositório vive no Windows e o COPY não traz bit de
+# execução.
+RUN cat /usr/local/share/pulse-virtual.pa >> /etc/pulse/system.pa \
+ && chmod 0755 /usr/local/bin/audio-bridge.py /usr/local/bin/audio-start.sh \
+ && sed -i \
+      's#<title>KasmVNC</title>#<title>KasmVNC</title><script src="/kasm-audio.js" defer></script>#' \
+      /usr/share/kasmvnc/www/index.html \
+ && grep -q 'kasm-audio.js' /usr/share/kasmvnc/www/index.html
 
 # Xvfb -> Xvnc (KasmVNC), com a geometria e a porta do cliente web vindas do
 # ambiente. O `&` final (servidor em background) é literal no entrypoint — no
@@ -52,3 +71,18 @@ RUN sed -i \
       /entrypoint.sh \
  && grep -q 'Xvnc :99' /entrypoint.sh \
  && ! grep -q '^Xvfb ' /entrypoint.sh
+
+# Áudio: a linha do áudio entra ANTES do Xvnc (o sink virtual tem de existir
+# quando o Chrome arrancar — é para ele que o som vai).
+RUN sed -i \
+      's#^Xvnc :99#/usr/local/bin/audio-start.sh\nXvnc :99#' \
+      /entrypoint.sh \
+ && grep -q 'audio-start.sh' /entrypoint.sh
+
+# O socket do PulseAudio que o Chrome e o `parec` usam (ver pulse-virtual.pa).
+# O entrypoint é quem sobe o servidor; aqui fica só o endereço dele.
+ENV PULSE_SERVER=unix:/tmp/pulse-native
+# Porta da ponte de áudio no loopback: o roteador da instância publica o
+# caminho /audio e o dashboard manda este mesmo número em `--audio`.
+ENV AUDIO_PORT=9226
+

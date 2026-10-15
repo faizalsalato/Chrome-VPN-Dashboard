@@ -20,3 +20,7 @@ dashboard.service
 # Dependências do mitm-proxy (node_modules do topo já cobre, redundância segura)
 mitm-proxy/node_modules/
 
+
+# Bytecode do Python (as ferramentas do container sao .py)
+__pycache__/
+*.pyc

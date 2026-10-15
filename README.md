@@ -397,6 +397,43 @@ KasmVNC, tudo na mesma porta publicada (`BASE_PORT + id`).
 > `resize=scale` faziam o cliente redimensionar a tela e encolhiam a janela do
 > navegador. O WebSocket do KasmVNC fica em `/websockify` (o cliente noVNC envia
 > o header `Sec-WebSocket-Origin`; o vhost já faz o `sub_filter` `ws://`→`wss://`).
+### Áudio da tela (KasmVNC)
+
+O **KasmVNC não transmite áudio** — é limitação do próprio projeto (o áudio é um
+canal do Kasm Workspaces, que é produto fechado). Como o container também não tem
+placa de som, o dashboard monta o caminho inteiro dentro da imagem derivada
+(`deploy/browser-image/`):
+
+1. o entrypoint sobe um **PulseAudio em modo sistema** com um **sink virtual**
+   (`module-null-sink`): é para ele que o Chrome manda o som, porque não existe
+   saída de verdade;
+2. a **ponte** (`audio-bridge.py`) lê o **monitor** desse sink com `parec` e
+   serve o PCM cru (s16le, sem cabeçalho) em `/audio`, num fluxo HTTP;
+3. o roteador da porta da instância (`port-router.py --audio 9226`) manda
+   `/audio` para a ponte — o som sai pela **mesma porta publicada** do CDP e da
+   tela, sem porto novo;
+4. o cliente web do KasmVNC recebe um botão **🔇 Som** (`kasm-audio.js`,
+   injetado no `index.html` da imagem): um clique liga o som e a escolha fica
+   lembrada para as visitas seguintes.
+
+> **Como usar:** abra a tela e clique em **🔇 Som** no canto inferior direito. O
+> clique é obrigatório — o Chrome só libera áudio depois de um gesto do usuário.
+
+Ajustes por ambiente (no container), para quando o link é apertado:
+
+| Variável | Padrão | O que faz |
+| --- | --- | --- |
+| `AUDIO_RATE` | `24000` | taxa do PCM em Hz (24000 × 1 canal ≈ 48 kB/s) |
+| `AUDIO_CHANNELS` | `1` | canais de som (2 dobra o tráfego) |
+| `AUDIO_PORT` | `9226` | porta da ponte no loopback (o dashboard passa a mesma em `--audio`) |
+
+> **Mudou o Dockerfile? A imagem se reconstrói sozinha.** A imagem derivada
+> guarda a etiqueta `dashboard.recipe` com a impressão do Dockerfile e dos
+> arquivos que ele copia; quando a impressão muda, a próxima instância
+> CloakBrowser reconstrói a imagem — e o container é recriado, porque o comando
+> dele mudou. Sem isso, uma imagem antiga continuaria a ser usada para sempre.
+
+
 
 ## Países Disponíveis
 

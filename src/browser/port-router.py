@@ -6,18 +6,20 @@ UM único porto publicado serve DOIS serviços dentro do container:
   * o CDP do Chrome (descoberta `/json/...`, WebSocket `/devtools/...`) —
     preso em `127.0.0.1:9222` pelo binário, que ignora
     `--remote-debugging-address` de propósito;
-  * a tela do KasmVNC (cliente web e WebSocket) — presa em `127.0.0.1:9225`.
+  * a tela do KasmVNC (cliente web e WebSocket) — presa em `127.0.0.1:9225`;
+  * a ponte de áudio (fluxo PCM de `/audio`, ver audio-bridge.py) — presa em
+    `127.0.0.1:9226`.
 
-Sem este roteador nenhum dos dois sairia do container: o loopback não é
-alcançável pela porta publicada. Ele também evita um segundo porto publicado —
-o gluetun continua publicando exatamente uma porta por instância.
+Sem este roteador nenhum deles sairia do container: o loopback não é alcançável
+pela porta publicada. Ele também evita um segundo porto publicado — o gluetun
+continua publicando exatamente uma porta por instância.
 
 A escolha é por CAMINHO, lida da primeira linha HTTP da conexão. Depois de
 escolher o destino os bytes seguem intactos (é um túnel TCP puro), então o
 WebSocket do CDP e o do KasmVNC atravessam sem nenhuma tradução.
 
 Uso:
-    port-router.py --listen 9223 --cdp 9222 --screen 9225
+    port-router.py --listen 9223 --cdp 9222 --screen 9225 --audio 9226
 
 Sem dependências externas (só a biblioteca padrão), porque a imagem do
 CloakBrowser não traz socat/nc.
@@ -40,6 +42,8 @@ REQUEST_HEAD_LIMIT = 8192
 # Prefixos de caminho que pertencem ao CDP. `/json` cobre `/json` e `/json/...`;
 # `/devtools` cobre o WebSocket; `/fingerprint` é o roteamento por seed.
 CDP_PATH_PREFIXES = ('/json', '/devtools', '/fingerprint')
+# Prefixo da ponte de áudio (o fluxo PCM que o cliente injetado no KasmVNC lê).
+AUDIO_PATH_PREFIXES = ('/audio',)
 # Métodos HTTP que reconhecemos na primeira linha. Qualquer coisa que não
 # comece por um deles vai para a TELA (é o destino que tolera ruído: o cliente
 # web do KasmVNC responde a requisições malformadas com a própria página).
@@ -95,18 +99,28 @@ def _path_of(head: bytes) -> str:
     return parts[1].decode('latin-1', 'replace')
 
 
-def _target_port(head: bytes, cdp_port: int, screen_port: int) -> int:
-    """Porta de destino para esta conexão: CDP ou tela."""
+def _target_port(head: bytes, cdp_port: int, screen_port: int, audio_port: int) -> int:
+    """Porta de destino para esta conexão: áudio, CDP ou tela."""
     path = _path_of(head)
-    # Sem caminho reconhecível não há como ser CDP: a tela é o destino padrão.
+    # Sem caminho reconhecível não há como ser CDP nem áudio: a tela é o destino
+    # padrão (o cliente web do KasmVNC responde a requisições malformadas com a
+    # própria página).
+    if path and path.startswith(AUDIO_PATH_PREFIXES):
+        return audio_port
     if path and path.startswith(CDP_PATH_PREFIXES):
         return cdp_port
     return screen_port
 
 
-def _bridge(client: socket.socket, head: bytes, cdp_port: int, screen_port: int) -> None:
+def _bridge(
+    client: socket.socket,
+    head: bytes,
+    cdp_port: int,
+    screen_port: int,
+    audio_port: int
+) -> None:
     """Liga um cliente ao destino escolhido, nos dois sentidos."""
-    port = _target_port(head, cdp_port, screen_port)
+    port = _target_port(head, cdp_port, screen_port, audio_port)
     target = ('127.0.0.1', port)
 
     try:
@@ -141,7 +155,7 @@ def _bridge(client: socket.socket, head: bytes, cdp_port: int, screen_port: int)
         pass
 
 
-def serve(listen_port: int, cdp_port: int, screen_port: int) -> None:
+def serve(listen_port: int, cdp_port: int, screen_port: int, audio_port: int) -> None:
     """Aceita conexões em 0.0.0.0:<listen_port> e as repassa por caminho."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -149,7 +163,7 @@ def serve(listen_port: int, cdp_port: int, screen_port: int) -> None:
     server.listen(BACKLOG)
     print(
         f"[port-router] 0.0.0.0:{listen_port} -> CDP 127.0.0.1:{cdp_port} | "
-        f"tela 127.0.0.1:{screen_port}",
+        f"tela 127.0.0.1:{screen_port} | áudio 127.0.0.1:{audio_port}",
         file=sys.stderr
     )
 
@@ -160,15 +174,15 @@ def serve(listen_port: int, cdp_port: int, screen_port: int) -> None:
             continue
         threading.Thread(
             target=_handle,
-            args=(client, cdp_port, screen_port),
+            args=(client, cdp_port, screen_port, audio_port),
             daemon=True
         ).start()
 
 
-def _handle(client: socket.socket, cdp_port: int, screen_port: int) -> None:
+def _handle(client: socket.socket, cdp_port: int, screen_port: int, audio_port: int) -> None:
     """Lê a linha de requisição e delega a ponte correspondente."""
     head = _read_request_line(client)
-    _bridge(client, head, cdp_port, screen_port)
+    _bridge(client, head, cdp_port, screen_port, audio_port)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -176,10 +190,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--listen', type=int, default=9223, help='porta pública dentro do container')
     parser.add_argument('--cdp', type=int, default=9222, help='porta do CDP no loopback')
     parser.add_argument('--screen', type=int, default=9225, help='porta da tela (KasmVNC) no loopback')
+    parser.add_argument('--audio', type=int, default=9226, help='porta da ponte de áudio no loopback')
     args = parser.parse_args(argv)
 
     try:
-        serve(args.listen, args.cdp, args.screen)
+        serve(args.listen, args.cdp, args.screen, args.audio)
     except KeyboardInterrupt:
         return 0
     return 0
