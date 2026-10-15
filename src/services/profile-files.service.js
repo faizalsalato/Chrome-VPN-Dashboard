@@ -18,9 +18,27 @@ const DOWNLOAD_DIRS = {
   cloakbrowser: { root: '/profile', dir: 'Downloads' }
 };
 
-// Teto por ficheiro. Igual ao limite do corpo aceite na API (express.json), para
-// a mensagem de erro ser a mesma dos dois lados.
-const MAX_BYTES = 24 * 1024 * 1024;
+// Teto por ficheiro, em bytes. Vazio ou 0 = SEM TETO: no caminho de streaming o
+// ficheiro vai direto para o disco do servidor, então o único limite passa a ser
+// o espaço em disco. A variável existe para travar um envio gigante por engano
+// (MAX_UPLOAD_BYTES, no serviço do dashboard), sem mexer no código.
+const DEFAULT_MAX_BYTES = 0;
+
+/** Teto por ficheiro, lido do ambiente a cada uso (0 = sem teto). */
+function maxBytes() {
+  const configured = String(process.env.MAX_UPLOAD_BYTES || '').trim();
+  if (!configured) return DEFAULT_MAX_BYTES;
+
+  const value = Number(configured);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/** Mensagem do teto — a mesma na rota e no serviço, para o erro bater certo. */
+function limitMessage() {
+  const limite = maxBytes();
+  if (!limite) return 'Ficheiro maior que o espaço em disco disponível';
+  return `Ficheiro maior que ${Math.round(limite / 1024 / 1024)} MB`;
+}
 
 // Nome de recurso quando o ficheiro vem sem nome utilizável.
 const FALLBACK_NAME = 'ficheiro';
@@ -55,7 +73,11 @@ class ProfileFilesService {
   }
 
   /**
-   * Conteúdo em base64 → Buffer, com o teto de tamanho.
+   * Conteúdo em base64 → Buffer, com o teto.
+   *
+   * É o contrato antigo (corpo JSON com `{name, data}`), mantido para scripts e
+   * pedidos à mão. O dashboard usa o caminho de streaming, que não passa por
+   * base64 nenhum: o ficheiro vai cru no corpo e direto para o disco.
    *
    * @returns {{buffer: Buffer|null, error: string|null}}
    */
@@ -70,10 +92,17 @@ class ProfileFilesService {
       return { buffer: null, error: 'Conteúdo inválido' };
     }
     if (!buffer.length) return { buffer: null, error: 'Conteúdo inválido' };
-    if (buffer.length > MAX_BYTES) {
-      return { buffer: null, error: `Ficheiro maior que ${Math.round(MAX_BYTES / 1024 / 1024)} MB` };
-    }
+
+    const error = this.checkSize(buffer.length);
+    if (error) return { buffer: null, error };
     return { buffer, error: null };
+  }
+
+  /** O ficheiro cabe no teto? (0 = sem teto: quem manda é o disco.) */
+  checkSize(bytes) {
+    const limite = maxBytes();
+    if (limite && bytes > limite) return limitMessage();
+    return null;
   }
 
   /**
@@ -97,5 +126,7 @@ class ProfileFilesService {
 }
 
 module.exports = new ProfileFilesService();
-module.exports.MAX_BYTES = MAX_BYTES;
+module.exports.DEFAULT_MAX_BYTES = DEFAULT_MAX_BYTES;
+module.exports.maxBytes = maxBytes;
+module.exports.limitMessage = limitMessage;
 module.exports.DOWNLOAD_DIRS = DOWNLOAD_DIRS;

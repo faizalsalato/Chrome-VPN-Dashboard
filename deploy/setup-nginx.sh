@@ -14,6 +14,11 @@ server {
     listen [::]:80;
     server_name sakr.ath.cx www.sakr.ath.cx;
 
+    # Envio de ficheiros para o perfil da instância: SEM teto de corpo. O padrão
+    # do nginx é 1 MB, que barrava até fotos — o limite real passa a ser o espaço
+    # em disco do servidor (o dashboard escreve o ficheiro em streaming).
+    client_max_body_size 0;
+
     # Let's Encrypt HTTP-01 challenge (fica pronto para ativar o cert depois)
     location /.well-known/acme-challenge/ {
         root /var/www/html;

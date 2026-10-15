@@ -1,3 +1,8 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
@@ -111,30 +116,111 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+/**
+ * Nome do ficheiro vindo no cabeçalho `X-File-Name`.
+ *
+ * Cabeçalho HTTP é latin-1: acentos e emojis só atravessam se o cliente os
+ * codificar, então o dashboard manda `encodeURIComponent(nome)`.
+ */
+function headerName(req) {
+  const raw = String(req.headers['x-file-name'] || '').trim();
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw);
+  } catch (err) {
+    return raw;
+  }
+}
+
+/** Teto de tamanho (0 = sem teto): conta os bytes que passam e corta no limite. */
+function sizeGuard() {
+  const limite = profileFiles.maxBytes();
+  let total = 0;
+
+  const transform = new Transform({
+    transform(chunk, encoding, callback) {
+      total += chunk.length;
+      if (limite && total > limite) {
+        const error = new Error(profileFiles.limitMessage());
+        error.status = 413;
+        return callback(error);
+      }
+      callback(null, chunk);
+    }
+  });
+
+  return { transform, total: () => total };
+}
+
+/**
+ * Corpo cru (o ficheiro) → ficheiro temporário no disco → container.
+ *
+ * O temporário existe para o conteúdo não ter de caber na memória do dashboard:
+ * daí o tar que vai para o docker ler o disco em blocos. É este o caminho dos
+ * ficheiros grandes (fotos, vídeos), e o único limite é o espaço em disco.
+ */
+async function saveFromStream(id, req) {
+  const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const file = path.join(os.tmpdir(), `dashboard-upload-${id}-${sufixo}`);
+  const guard = sizeGuard();
+
+  try {
+    await pipeline(req, guard.transform, fs.createWriteStream(file));
+
+    const bytes = guard.total();
+    if (!bytes) throw Object.assign(new Error('Ficheiro vazio'), { status: 400 });
+
+    return await instanceService.saveFile(id, headerName(req), { path: file, bytes });
+  } finally {
+    await fs.promises.unlink(file).catch(() => {});
+  }
+}
+
+/** Corpo JSON com base64 (contrato antigo, para scripts). */
+async function saveFromJson(id, body) {
+  const decoded = profileFiles.decode(body.data);
+  if (decoded.error) {
+    throw Object.assign(new Error(decoded.error), { validation: true });
+  }
+  return instanceService.saveFile(id, body.name, decoded.buffer);
+}
+
 // POST /api/instances/:id/files - Envia um ficheiro para a pasta de Downloads do
 // perfil (foto/vídeo que o usuário vai publicar nas redes).
+//
+// Dois caminhos, escolhidos pelo Content-Type:
+//
+//   * `application/octet-stream` (é o que o dashboard usa): o corpo É o
+//     ficheiro, que vai para um temporário no disco em streaming e de lá direto
+//     para o container — sem base64 (33% mais pesado) e sem o conteúdo passar
+//     pela memória do dashboard;
+//   * `application/json` com `{name, data}` em base64: contrato antigo, mantido
+//     para scripts e pedidos à mão (fica com o teto e com o limite de corpo do
+//     express.json).
 router.post('/:id/files', async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id) || id < 1) {
+    return res.status(400).json({
+      error: 'ValidationError',
+      message: 'ID de instância inválido'
+    });
+  }
+
+  const raw = !req.is('application/json');
+
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: 'ID de instância inválido'
-      });
-    }
+    const saved = raw
+      ? await saveFromStream(id, req)
+      : await saveFromJson(id, req.body || {});
 
-    const { name, data } = req.body || {};
-    const decoded = profileFiles.decode(data);
-    if (decoded.error) {
-      return res.status(400).json({ error: 'ValidationError', message: decoded.error });
-    }
-
-    const saved = await instanceService.saveFile(id, name, decoded.buffer);
     res.status(201).json({
       message: `"${saved.name}" enviado para o perfil (pasta Downloads)`,
       ...saved
     });
   } catch (err) {
+    if (err.validation) {
+      return res.status(400).json({ error: 'ValidationError', message: err.message });
+    }
     if (err.status) {
       return res.status(err.status).json({ error: 'UploadError', message: err.message });
     }

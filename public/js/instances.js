@@ -519,6 +519,10 @@ const Instances = {
    * sistema de ficheiros do CONTAINER (é o navegador do perfil que o mostra), e
    * não o do computador de quem usa o dashboard. Enviar o ficheiro para lá é o
    * que o torna escolhível.
+   *
+   * O ficheiro vai CRU no corpo do pedido (nada de base64, que pesaria 33% mais
+   * e obrigaria a montar a cópia inteira na memória): o servidor escreve-o no
+   * disco em streaming, então o tamanho só depende do espaço em disco.
    */
   handleUpload(e) {
     const id = e.currentTarget.dataset.id;
@@ -531,34 +535,76 @@ const Instances = {
       input.remove();
       if (!file) return;
 
-      const maxBytes = 24 * 1024 * 1024;
-      if (file.size > maxBytes) {
-        App.showToast(`Ficheiro maior que ${Math.round(maxBytes / 1024 / 1024)} MB`, 'error');
-        return;
-      }
-
       const btn = document.querySelector(`.action-upload[data-id="${id}"]`);
       if (btn) btn.classList.add('loading');
-      try {
-        // A API recebe o conteúdo em base64 (é o que o FileReader dá).
-        const data = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-          reader.onerror = () => reject(new Error('Falha ao ler o ficheiro'));
-          reader.readAsDataURL(file);
-        });
 
-        const result = await API.post(`/instances/${id}/files`, { name: file.name, data });
+      try {
+        const result = await this._sendFile(id, file, (percent) => {
+          if (btn) btn.title = `A enviar "${file.name}" — ${percent}%`;
+        });
         App.showToast(result.message || 'Ficheiro enviado', 'success');
       } catch (err) {
         App.showToast(err.message || 'Erro ao enviar o ficheiro', 'error');
       } finally {
-        if (btn) btn.classList.remove('loading');
+        if (btn) {
+          btn.classList.remove('loading');
+          btn.removeAttribute('title');
+        }
       }
     });
 
     document.body.appendChild(input);
     input.click();
+  },
+
+  /**
+   * POST do ficheiro cru, com progresso.
+   *
+   * É `XMLHttpRequest` (e não `fetch`) por causa do `upload.onprogress`: num
+   * vídeo de centenas de MB o usuário precisa de ver que está a andar.
+   *
+   * @param {string} id
+   * @param {File} file
+   * @param {(percent: number) => void} [onProgress]
+   */
+  _sendFile(id, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('POST', `/api/instances/${id}/files`);
+      request.setRequestHeader('Content-Type', 'application/octet-stream');
+      // O cabeçalho é latin-1: o nome (acentos, emojis) vai codificado.
+      request.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+
+      const token = API.getToken();
+      if (token) request.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      request.upload.onprogress = (event) => {
+        if (onProgress && event.lengthComputable && event.total) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+
+      request.onload = () => {
+        let data = {};
+        try {
+          data = JSON.parse(request.responseText);
+        } catch (err) {
+          data = {};
+        }
+
+        if (request.status >= 200 && request.status < 300) return resolve(data);
+        if (request.status === 401) {
+          API.removeToken();
+          window.location.href = '/login.html';
+          return reject(new Error(data.message || 'Sessão expirada'));
+        }
+        reject(new Error(data.message || `Erro ${request.status}`));
+      };
+
+      request.onerror = () => reject(new Error('Erro de conexão com o servidor'));
+      request.onabort = () => reject(new Error('Envio cancelado'));
+      request.send(file);
+    });
   },
 
   disableControls(disabled) {

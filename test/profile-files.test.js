@@ -66,11 +66,36 @@ describe('profile-files.service — conteúdo', () => {
     expect(buffer.toString('utf-8')).toBe('ola mundo');
   });
 
-  it('recusa vazio, lixo e ficheiro acima do teto', () => {
+  it('recusa vazio e lixo', () => {
     expect(profileFiles.decode('').error).toMatch(/vazio/i);
     expect(profileFiles.decode(null).error).toMatch(/vazio/i);
+    expect(profileFiles.decode('###').error).toMatch(/inválido/i);
+  });
 
-    const grande = Buffer.alloc(profileFiles.MAX_BYTES + 1).toString('base64');
-    expect(profileFiles.decode(grande).error).toMatch(/maior que/i);
+  it('por omissão NÃO há teto: o limite é o espaço em disco', () => {
+    // O dashboard manda o ficheiro cru e ele vai para o disco em streaming; o
+    // teto só existe se o operador o impuser por ambiente.
+    expect(profileFiles.maxBytes()).toBe(0);
+    expect(profileFiles.checkSize(500 * 1024 * 1024)).toBeNull();
+
+    // 26 MB — acima do antigo teto de 24 MB, que era o que barrava o envio.
+    const grande = Buffer.alloc(26 * 1024 * 1024, 3).toString('base64');
+    expect(profileFiles.decode(grande).error).toBeNull();
+  });
+
+  it('com MAX_UPLOAD_BYTES o teto vale, com a mensagem a dizer o valor', () => {
+    const anterior = process.env.MAX_UPLOAD_BYTES;
+    process.env.MAX_UPLOAD_BYTES = String(1024 * 1024);
+
+    try {
+      expect(profileFiles.maxBytes()).toBe(1024 * 1024);
+      expect(profileFiles.checkSize(1024 * 1024)).toBeNull();
+      expect(profileFiles.checkSize(1024 * 1024 + 1)).toMatch(/maior que 1 MB/i);
+      expect(profileFiles.decode(Buffer.alloc(2 * 1024 * 1024).toString('base64')).error)
+        .toMatch(/maior que/i);
+    } finally {
+      if (anterior === undefined) delete process.env.MAX_UPLOAD_BYTES;
+      else process.env.MAX_UPLOAD_BYTES = anterior;
+    }
   });
 });

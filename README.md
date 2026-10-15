@@ -433,6 +433,34 @@ Ajustes por ambiente (no container), para quando o link é apertado:
 > CloakBrowser reconstrói a imagem — e o container é recriado, porque o comando
 > dele mudou. Sem isso, uma imagem antiga continuaria a ser usada para sempre.
 
+### Envio de ficheiros para o perfil (⬆ Enviar)
+
+O botão **⬆ Enviar** do cartão manda um ficheiro do seu computador para a pasta
+**Downloads** do perfil da instância — é o que o seletor de ficheiros do site
+abre quando publica nas redes (o site vê o sistema de ficheiros do *container*,
+não o do seu PC).
+
+**Não há limite de tamanho.** O ficheiro vai **cru** no corpo do pedido
+(`application/octet-stream`, com o nome em `X-File-Name`), o dashboard escreve-o
+num ficheiro temporário no disco em *streaming* e de lá ele segue para o
+container num tar lido em blocos — sem nunca passar pela memória do dashboard
+nem pelo `express.json`. O único limite é o espaço em disco do servidor (o botão
+mostra a percentagem durante o envio).
+
+> Antes disto, 24 MB falhavam: o ficheiro ia em base64 dentro de um JSON (33%
+> maior), o `express.json` cortava em 25 MB e — antes disso — o
+> `client_max_body_size` do nginx, que vale **1 MB** por omissão, cortava tudo o
+> que passasse disso. O vhost do dashboard (`deploy/nginx-dashboard.conf` e
+> `deploy/setup-nginx.sh`) passou a trazer `client_max_body_size 0` (sem teto).
+
+| Variável | Padrão | O que faz |
+| --- | --- | --- |
+| `MAX_UPLOAD_BYTES` | `0` (sem teto) | Teto por ficheiro, em bytes, para travar um envio gigante por engano |
+
+> O contrato antigo (JSON `{name, data}` com base64) continua a funcionar, para
+> scripts — mas é ele que fica sujeito ao teto e ao limite de corpo do
+> `express.json`.
+
 
 
 ## Países Disponíveis

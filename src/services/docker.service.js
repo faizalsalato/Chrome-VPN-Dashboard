@@ -6,6 +6,7 @@
  * chrome-container.service.js / gluetun-container.service.js, e a descoberta
  * das instâncias em instance-discovery.service.js.
  */
+const fs = require('fs');
 const Docker = require('dockerode');
 const tar = require('tar-stream');
 const proxyInjector = require('./proxy-injector.service');
@@ -178,18 +179,46 @@ class DockerService {
    *
    * Funciona com o container parado.
    *
-   * @param {object} options { root, relativePath, content, uid, gid }
+   * @param {object} options { root, relativePath, content, filePath, bytes, uid, gid }
    */
-  async writeContainerFile(id, { root, relativePath, content, uid = 0, gid = 0 }, client = docker) {
+  async writeContainerFile(id, { root, relativePath, content, filePath, bytes, uid = 0, gid = 0 }, client = docker) {
     const parts = String(relativePath).split('/').filter(Boolean);
-    // Texto (política, marcadores) ou binário (ficheiro enviado pelo usuário).
-    const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content), 'utf-8');
+    // Três origens possíveis: texto (política, marcadores), binário em memória
+    // (ficheiro pequeno) e um ficheiro JÁ no disco (envio grande). No terceiro
+    // caso o conteúdo nunca passa pela memória do dashboard: o tar lê o disco em
+    // blocos e o docker escreve no container.
+    const buffer = filePath ? null : (Buffer.isBuffer(content) ? content : Buffer.from(String(content), 'utf-8'));
+    const size = filePath ? Number(bytes || 0) : buffer.length;
 
     const pack = tar.pack();
     for (let i = 1; i < parts.length; i++) {
       pack.entry({ name: parts.slice(0, i).join('/'), type: 'directory', mode: 0o755, uid, gid });
     }
-    pack.entry({ name: parts.join('/'), size: buffer.length, mode: 0o644, uid, gid }, buffer);
+
+    const header = { name: parts.join('/'), size, mode: 0o644, uid, gid };
+    if (filePath) {
+      // O `pack.entry(header, stream)` NÃO escreve o conteúdo: a entrada fica com
+      // 0 bytes e o envio nunca termina (verificado no servidor, com um ficheiro
+      // de 5 MB a sair com 0 bytes). O que funciona é abrir a entrada vazia e
+      // escrever nela — e com o envio JÁ a correr, para o ficheiro fluir do disco
+      // para o docker sem ficar todo em memória.
+      const envio = client.getContainer(`chrome${id}`).putArchive(pack, { path: root });
+
+      await new Promise((resolve, reject) => {
+        const origem = fs.createReadStream(filePath);
+        const entrada = pack.entry(header);
+        origem.on('error', reject);
+        entrada.on('error', reject);
+        entrada.on('finish', resolve);
+        origem.pipe(entrada);
+      });
+
+      pack.finalize();
+      await envio;
+      return `${root}/${parts.join('/')}`;
+    }
+
+    pack.entry(header, buffer);
     pack.finalize();
 
     await client.getContainer(`chrome${id}`).putArchive(pack, { path: root });
@@ -235,20 +264,28 @@ class DockerService {
    * o seletor de ficheiros do site abre o sistema de ficheiros do CONTAINER, e
    * não o computador de quem usa o dashboard.
    *
+   * O ficheiro chega como Buffer (pedido pequeno, em base64) ou como
+   * `{path, bytes}` — o caminho de um ficheiro já no disco, que é o que o envio
+   * grande usa para não passar pela memória.
+   *
    * @returns {Promise<{path: string, name: string, bytes: number}>}
    */
-  async saveProfileFile(id, browser, name, buffer, client = docker) {
+  async saveProfileFile(id, browser, name, source, client = docker) {
     const target = profileFiles.targetFor(browser, name);
+    const fromDisk = !!source && typeof source === 'object' && !Buffer.isBuffer(source) && !!source.path;
+    const bytes = fromDisk ? Number(source.bytes || 0) : source.length;
 
     await this.writeContainerFile(id, {
       root: target.root,
       relativePath: target.relativePath,
-      content: buffer,
+      content: fromDisk ? null : source,
+      filePath: fromDisk ? source.path : null,
+      bytes,
       uid: target.uid,
       gid: target.gid
     }, client);
 
-    return { path: target.path, name: target.relativePath.split('/').pop(), bytes: buffer.length };
+    return { path: target.path, name: target.relativePath.split('/').pop(), bytes };
   }
 
   /** Sobe o container do túnel (se existir e estiver parado). */
