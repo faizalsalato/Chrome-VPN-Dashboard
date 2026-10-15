@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const { initDatabase } = require('./database');
 const authRouter = require('./routes/auth.router');
@@ -21,6 +22,26 @@ app.use(cors());
 // acompanhar (o padrão do Express é 100 kB). O teto por ficheiro é o mesmo do
 // profile-files.service, para a mensagem de erro bater certo.
 app.use(express.json({ limit: '25mb' }));
+
+// Carimbo nas URLs dos assets (JS/CSS) do HTML. Sem isto o browser pode
+// continuar a usar o ficheiro antigo depois de um deploy e o usuário jura que a
+// mudança não chegou (foi o que aconteceu com a lista de países). O carimbo
+// muda a cada arranque do dashboard — que é quando o código novo entra em vigor.
+const ASSET_VERSION = Date.now().toString(36);
+const INDEX_HTML = path.join(__dirname, '..', 'public', 'index.html');
+
+function withAssetVersion(html) {
+  return html.replace(/(src|href)="\/(js|css)\/([^"]+)"/g, `$1="/$2/$3?v=${ASSET_VERSION}"`);
+}
+
+// O index.html passa por aqui (antes do estático) para levar o carimbo.
+app.get('/', (req, res, next) => {
+  fs.readFile(INDEX_HTML, 'utf-8', (err, html) => {
+    if (err) return next(err);
+    res.type('html').send(withAssetVersion(html));
+  });
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Routes
