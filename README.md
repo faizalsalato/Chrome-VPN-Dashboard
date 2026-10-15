@@ -29,15 +29,41 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - Nginx instalado
 - Certbot instalado (`apt install certbot python3-certbot-nginx`)
 - Node.js 20+
-- DNS wildcard `*.sakr.ath.cx` apontando para o servidor
+- **DNS**: o domínio do painel **e** o curinga `*.<domínio>` apontando para o servidor (cada instância ganha `chromeN.<domínio>`)
 
 ## Instalação Rápida
 
 ```bash
-cd /root/dash
-chmod +x install-and-run.sh setup-nginx.sh
+chmod +x install-and-run.sh
 ./install-and-run.sh
 ```
+
+O instalador **pergunta o domínio** (e o email do certificado) e mostra o que vai
+fazer antes de tocar em qualquer coisa:
+
+```
+🌐 Domínio do painel
+   O painel fica neste domínio e cada instância ganha um subdomínio
+   (chrome1.<domínio>, chrome2.<domínio>…). O DNS já precisa de apontar
+   para este servidor — o certificado do Let's Encrypt é pedido agora.
+
+   Domínio (ex: exemplo.com): _
+```
+
+Para correr **sem interação** (CI, cloud-init, Ansible), informe o domínio:
+
+```bash
+./install-and-run.sh --domain exemplo.com --email eu@exemplo.com --yes
+# ou
+BASE_DOMAIN=exemplo.com ./install-and-run.sh
+```
+
+O que ele faz: instala o Node.js (se faltar), copia o projeto para
+`/opt/chrome-vpn-dashboard`, instala as dependências, cria o serviço systemd
+(`chrome-vpn-dashboard`), gera o vhost do painel no nginx (**com
+`client_max_body_size 0`**, para o envio de ficheiros), pede o certificado no
+Let's Encrypt e liga a swap (idempotente). `./install-and-run.sh --help` lista as
+opções.
 
 ## Instalação Manual
 

@@ -1,20 +1,94 @@
 #!/bin/bash
 # ============================================================
 # install-and-run.sh — Instala e roda o Dashboard
-# Domínio: <BASE_DOMAIN> (HTTPS via Nginx + Let's Encrypt)
+# Domínio: perguntado na instalação (ou --domain / BASE_DOMAIN)
 #
 # Cada instância de navegador ganha um subdomínio próprio
 # (<slug>.<BASE_DOMAIN>) com vhost de nginx gerado pelo próprio
 # dashboard (src/services/nginx.service.js) — este script só
 # prepara o painel (o vhost raiz) e o serviço systemd.
+#
+#   ./install-and-run.sh                      # pergunta o domínio
+#   ./install-and-run.sh --domain exemplo.com # sem interação
+#   BASE_DOMAIN=exemplo.com ./install-and-run.sh
 # ============================================================
 
 set -e
 
-# --- Parâmetros (sobrescreva por variável de ambiente) ---------
-# BASE_DOMAIN: domínio raiz. O painel fica nele e cada instância
-#   ganha <slug>.<BASE_DOMAIN> (ex.: chrome1.brave.rota.ath.cx).
-BASE_DOMAIN="${BASE_DOMAIN:-brave.rota.ath.cx}"
+# --- Parâmetros (flag, variável de ambiente ou pergunta) --------
+# Ordem de precedência: flag (--domain) > ambiente (BASE_DOMAIN) > pergunta.
+# Sem nada disso e com terminal, o script PERGUNTA o domínio (e o email do
+# certificado); num pipeline (CI, cloud-init) ele usa o que veio do ambiente
+# em vez de ficar preso à espera de alguém.
+BASE_DOMAIN="${BASE_DOMAIN:-}"
+EMAIL_ARG=""
+ASSUME_YES="${ASSUME_YES:-0}"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --domain)    BASE_DOMAIN="${2:-}"; shift 2 2>/dev/null || shift ;;
+    --domain=*)  BASE_DOMAIN="${1#*=}"; shift ;;
+    --email)     EMAIL_ARG="${2:-}"; shift 2 2>/dev/null || shift ;;
+    --email=*)   EMAIL_ARG="${1#*=}"; shift ;;
+    --yes|-y)    ASSUME_YES=1; shift ;;
+    --help|-h)
+      cat <<'AJUDA'
+Uso: install-and-run.sh [opções] [email]
+
+  --domain exemplo.com   Domínio do painel (as instâncias ficam em
+                         chrome1.exemplo.com, chrome2.exemplo.com…)
+  --email  eu@exemplo.com  Email do certificado (Let's Encrypt)
+  --yes, -y              Não pedir confirmação no fim
+  --help, -h             Esta ajuda
+
+Sem --domain, o script pergunta (ou usa BASE_DOMAIN do ambiente).
+AJUDA
+      exit 0 ;;
+    -*) echo "Opção desconhecida: $1 (use --help)"; exit 1 ;;
+    *)  EMAIL_ARG="$1"; shift ;;   # compatibilidade: 1º argumento era o email
+  esac
+done
+
+# Domínio: rótulos com letras/números/hífen, separados por ponto, com pelo
+# menos um ponto e uma extensão de 2+ letras. Nada de http://, barras, espaços
+# ou ponto final (o certificado do Let's Encrypt recusaria).
+valid_domain() {
+  printf '%s' "$1" | grep -Eq '^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+}
+
+valid_email() {
+  printf '%s' "$1" | grep -Eq '^[^@[:space:]]+@([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+}
+
+if [ -z "$BASE_DOMAIN" ]; then
+  if [ ! -t 0 ]; then
+    echo "❌ Domínio não informado. Use: BASE_DOMAIN=exemplo.com $0  (ou --domain exemplo.com)"
+    exit 1
+  fi
+
+  echo "🌐 Domínio do painel"
+  echo "   O painel fica neste domínio e cada instância ganha um subdomínio"
+  echo "   (chrome1.<domínio>, chrome2.<domínio>…). O DNS já precisa de apontar"
+  echo "   para este servidor — o certificado do Let's Encrypt é pedido agora."
+  echo
+
+  while true; do
+    # Sem `read` a funcionar (Ctrl-D, pipe sem dados) o laço giraria para sempre:
+    # melhor sair com uma mensagem do que ficar a queimar CPU.
+    if ! read -r -p "   Domínio (ex: exemplo.com): " BASE_DOMAIN; then
+      echo
+      echo "❌ Entrada encerrada sem domínio informado."
+      exit 1
+    fi
+    if valid_domain "$BASE_DOMAIN"; then break; fi
+    echo "   ✗ Domínio inválido. Escreva só o domínio — sem http://, sem barras, sem espaços."
+  done
+fi
+
+if ! valid_domain "$BASE_DOMAIN"; then
+  echo "❌ Domínio inválido: \"$BASE_DOMAIN\""
+  exit 1
+fi
 
 # Porta HTTP do painel (onde o vhost raiz do nginx faz proxy_pass).
 PORT="${PORT:-3001}"
@@ -33,10 +107,46 @@ PROXY_INJECTOR_BASE_PORT="${PROXY_INJECTOR_BASE_PORT:-8150}"
 SERVICE_NAME="${SERVICE_NAME:-chrome-vpn-dashboard}"
 APP_DIR="${APP_DIR:-/opt/chrome-vpn-dashboard}"
 
-EMAIL="${1:-admin@$BASE_DOMAIN}"
+# Email do certificado: flag > ambiente > pergunta (com admin@<domínio> já
+# preenchido, é só Enter na maioria dos casos).
+EMAIL="${EMAIL_ARG:-${EMAIL:-}}"
+if [ -z "$EMAIL" ]; then
+  # A sugestão fica FIXA: se ela fosse substituída pelo que o usuário digitou,
+  # um email inválido viraria o novo "padrão" e o laço nunca sairia dele.
+  sugestao="admin@$BASE_DOMAIN"
+
+  if [ -t 0 ]; then
+    echo
+    echo "📧 Email do certificado (o Let's Encrypt avisa aqui antes de expirar)"
+    while true; do
+      if ! read -r -p "   Email [$sugestao]: " resposta_email; then
+        echo
+        echo "❌ Entrada encerrada sem email informado."
+        exit 1
+      fi
+      EMAIL="${resposta_email:-$sugestao}"
+      if valid_email "$EMAIL"; then break; fi
+      echo "   ✗ Email inválido."
+    done
+  else
+    EMAIL="$sugestao"
+  fi
+fi
 
 echo "🚀 Dashboard Chrome/VPN - Instalação e Deploy"
 echo "================================================"
+echo "   Domínio : $BASE_DOMAIN"
+echo "   Email   : $EMAIL"
+echo "   Painel  : porta $PORT  |  instâncias: $BASE_PORT+id"
+echo
+
+# Última chance de corrigir o domínio antes de mexer no nginx e no certbot.
+if [ "$ASSUME_YES" != "1" ] && [ -t 0 ]; then
+  read -r -p "   Continuar? [S/n] " resposta || true
+  case "$resposta" in
+    n|N|nao|não|Não|NAO|NÃO) echo "Cancelado."; exit 0 ;;
+  esac
+fi
 
 # 1. Instalar Node.js se não tiver
 if ! command -v node &> /dev/null; then
