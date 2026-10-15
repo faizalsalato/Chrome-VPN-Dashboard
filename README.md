@@ -99,8 +99,8 @@ node src/server.js
 | `MAX_INSTANCES` | `20` | Máximo de instâncias permitidas |
 | `JWT_SECRET` | `super-secret-change-me` | Segredo para tokens JWT |
 | `SESSION_EXPIRY` | `86400` | Expiração da sessão (segundos) |
-| `ADMIN_USER` | `admin` | Usuário padrão |
-| `ADMIN_PASS` | `admin123` | Senha padrão |
+| `ADMIN_USER` | `admin` | Login do painel (o instalador pergunta; `--admin-user` para automatizar) |
+| `ADMIN_PASS` | (perguntada) | Senha do painel (`--admin-pass` para automatizar; sem terminal o instalador gera uma aleatória e mostra no fim) |
 | `CERTBOT_EMAIL` | `admin@DOMAIN` | Email para Let's Encrypt |
 | `PROXY_INJECTOR_BASE_PORT` | `8100` | Porta base dos forwarders de proxy autenticado (um por instância: `BASE+id`) |
 | `CLOAKBROWSER_IMAGE` | `cloakhq/cloakbrowser:latest` | Imagem do navegador antidetect (fixe uma tag para travar a versão do binário) |
@@ -300,7 +300,7 @@ O mascaramento atua **dentro da página** (JS, via content script em `world: "MA
 ## Acesso
 
 - **URL**: `http://IP_DO_SERVIDOR:3100` (ou via Nginx/Cloudflared)
-- **Login**: `admin` / `admin123`
+- **Login**: definido na instalação (`admin` por omissão) — o instalador pergunta o usuário e a senha; sem terminal, gera uma senha aleatória e mostra no fim
 - **Cartão da instância**: mostra **só o botão 🖥 Abrir tela** (no CloakBrowser é a tela do KasmVNC; no Chromium/Brave é a área de trabalho do subdomínio). A **porta** e a **URL** saíram do cartão. O título é curto e separado por `|` — `1 | Cloak | Surf` (número | tipo | navegador | provedor VPN); com nome, ele entra logo depois do número (`1 | conta da loja | Cloak | Surf`) e encurta com `…` se for comprido.
 
 ## Estrutura

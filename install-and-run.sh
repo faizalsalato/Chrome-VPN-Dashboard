@@ -22,6 +22,9 @@ set -e
 # em vez de ficar preso à espera de alguém.
 BASE_DOMAIN="${BASE_DOMAIN:-}"
 EMAIL_ARG=""
+ADMIN_USER_ARG=""
+ADMIN_PASS_ARG=""
+SENHA_GERADA=0
 ASSUME_YES="${ASSUME_YES:-0}"
 
 while [ $# -gt 0 ]; do
@@ -30,16 +33,23 @@ while [ $# -gt 0 ]; do
     --domain=*)  BASE_DOMAIN="${1#*=}"; shift ;;
     --email)     EMAIL_ARG="${2:-}"; shift 2 2>/dev/null || shift ;;
     --email=*)   EMAIL_ARG="${1#*=}"; shift ;;
+    --admin-user)    ADMIN_USER_ARG="${2:-}"; shift 2 2>/dev/null || shift ;;
+    --admin-user=*)  ADMIN_USER_ARG="${1#*=}"; shift ;;
+    --admin-pass)    ADMIN_PASS_ARG="${2:-}"; shift 2 2>/dev/null || shift ;;
+    --admin-pass=*)  ADMIN_PASS_ARG="${1#*=}"; shift ;;
     --yes|-y)    ASSUME_YES=1; shift ;;
     --help|-h)
       cat <<'AJUDA'
 Uso: install-and-run.sh [opções] [email]
 
-  --domain exemplo.com   Domínio do painel (as instâncias ficam em
-                         chrome1.exemplo.com, chrome2.exemplo.com…)
+  --domain exemplo.com     Domínio do painel (as instâncias ficam em
+                           chrome1.exemplo.com, chrome2.exemplo.com…)
   --email  eu@exemplo.com  Email do certificado (Let's Encrypt)
-  --yes, -y              Não pedir confirmação no fim
-  --help, -h             Esta ajuda
+  --admin-user nome        Login do painel (padrão: admin)
+  --admin-pass senha       Senha do painel (padrão: pergunta; sem terminal,
+                           gera uma aleatória e mostra no fim)
+  --yes, -y                Não pedir confirmação no fim
+  --help, -h               Esta ajuda
 
 Sem --domain, o script pergunta (ou usa BASE_DOMAIN do ambiente).
 AJUDA
@@ -58,6 +68,22 @@ valid_domain() {
 
 valid_email() {
   printf '%s' "$1" | grep -Eq '^[^@[:space:]]+@([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+}
+
+# Usuário do painel: 3 a 32 caracteres, começando por letra/número (evita
+# nomes que confundem o systemd ou o formulário de login).
+valid_user() {
+  printf '%s' "$1" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}$'
+}
+
+# Senha do painel: 8+ caracteres, sem espaços nem dois-pontos. O `Environment=`
+# do systemd termina a linha no espaço e usa `:` para o valor por omissão —
+# uma senha com qualquer um dos dois quebraria a unit.
+valid_pass() {
+  case "$1" in
+    *[[:space:]]*|*:*) return 1 ;;
+  esac
+  [ ${#1} -ge 8 ]
 }
 
 if [ -z "$BASE_DOMAIN" ]; then
@@ -133,11 +159,85 @@ if [ -z "$EMAIL" ]; then
   fi
 fi
 
+# Login do painel: é o usuário que o dashboard cria no primeiro arranque (vai no
+# unit do systemd, que é a fonte do ambiente do serviço).
+ADMIN_USER="${ADMIN_USER_ARG:-${ADMIN_USER:-}}"
+if [ -z "$ADMIN_USER" ]; then
+  ADMIN_USER="admin"
+  if [ -t 0 ]; then
+    echo
+    echo "👤 Login do painel"
+    while true; do
+      if ! read -r -p "   Usuário [$ADMIN_USER]: " resposta_user; then
+        echo
+        echo "❌ Entrada encerrada sem usuário informado."
+        exit 1
+      fi
+      ADMIN_USER="${resposta_user:-$ADMIN_USER}"
+      if valid_user "$ADMIN_USER"; then break; fi
+      echo "   ✗ Usuário inválido (3–32 caracteres: letras, números, . _ -)."
+    done
+  fi
+fi
+
+if ! valid_user "$ADMIN_USER"; then
+  echo "❌ Usuário inválido: \"$ADMIN_USER\""
+  exit 1
+fi
+
+# Senha do painel: digitada duas vezes e sem eco. Sem terminal (CI, cloud-init)
+# é gerada uma aleatória — melhor do que deixar `admin123` num servidor exposto.
+ADMIN_PASS="${ADMIN_PASS_ARG:-${ADMIN_PASS:-}}"
+if [ -z "$ADMIN_PASS" ]; then
+  if [ -t 0 ]; then
+    echo
+    echo "🔑 Senha do painel (não aparece enquanto digita)"
+    while true; do
+      if ! read -r -s -p "   Senha (8+ caracteres): " senha1; then
+        echo
+        echo "❌ Entrada encerrada sem senha informada."
+        exit 1
+      fi
+      echo
+      if ! valid_pass "$senha1"; then
+        echo "   ✗ Senha curta demais (mínimo 8) ou com espaço/dois-pontos."
+        continue
+      fi
+
+      if ! read -r -s -p "   Repita a senha: " senha2; then
+        echo
+        echo "❌ Entrada encerrada sem senha informada."
+        exit 1
+      fi
+      echo
+      if [ "$senha1" != "$senha2" ]; then
+        echo "   ✗ As senhas não conferem. Vamos de novo."
+        continue
+      fi
+
+      ADMIN_PASS="$senha1"
+      break
+    done
+  else
+    ADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-16)"
+    SENHA_GERADA=1
+  fi
+fi
+
+if ! valid_pass "$ADMIN_PASS"; then
+  echo "❌ Senha inválida: use 8+ caracteres, sem espaços nem dois-pontos."
+  exit 1
+fi
+
 echo "🚀 Dashboard Chrome/VPN - Instalação e Deploy"
 echo "================================================"
 echo "   Domínio : $BASE_DOMAIN"
 echo "   Email   : $EMAIL"
 echo "   Painel  : porta $PORT  |  instâncias: $BASE_PORT+id"
+echo "   Login   : $ADMIN_USER / $ADMIN_PASS"
+if [ "$SENHA_GERADA" = "1" ]; then
+  echo "   ⚠️  Senha gerada agora — guarde-a: não é mostrada outra vez."
+fi
 echo
 
 # Última chance de corrigir o domínio antes de mexer no nginx e no certbot.
@@ -215,6 +315,8 @@ MAX_UPLOAD_BYTES=0
 EOF
 
   echo "⚠️  Edite $APP_DIR/.env (referência) e o JWT_SECRET no unit systemd!"
+  # O .env tem o JWT e a senha do painel: só o root lê.
+  chmod 600 "$APP_DIR/.env"
 fi
 
 
@@ -265,6 +367,8 @@ WantedBy=multi-user.target
 EOF
 
 # 7. Ativar e iniciar
+# O unit carrega o JWT e a senha do painel em Environment=: fica 600 (só root).
+sudo chmod 600 "/etc/systemd/system/${SERVICE_NAME}.service"
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
@@ -335,5 +439,5 @@ echo "  systemctl status $SERVICE_NAME      # Ver status"
 echo "  systemctl restart $SERVICE_NAME     # Reiniciar"
 echo "  tail -f /var/log/chrome-vpn-dashboard.log   # Ver logs"
 echo ""
-echo "🔐 Login padrão: ${ADMIN_USER:-admin} / ${ADMIN_PASS:-admin123}"
-echo "⚠️  TROQUE o JWT_SECRET e as credenciais em /etc/systemd/system/${SERVICE_NAME}.service"
+echo "🔐 Login do painel: ${ADMIN_USER} / ${ADMIN_PASS}"
+echo "⚠️  Para trocar depois: edite /etc/systemd/system/${SERVICE_NAME}.service e remova o usuário do banco (o dashboard só cria o login na primeira vez que arranca)."
