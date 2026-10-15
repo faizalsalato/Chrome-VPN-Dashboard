@@ -103,6 +103,14 @@ describe('criação de instância — o payload chega ao serviço', () => {
     expect(instanceService.create).not.toHaveBeenCalled();
   });
 
+  it('recusa o Brave (saiu das opções; ficam Chromium e CloakBrowser)', async () => {
+    const res = await post({ type: 'vpn', browser: 'brave' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Navegador inválido/);
+    expect(instanceService.create).not.toHaveBeenCalled();
+  });
+
   it('sem versão no corpo continua a criar (o serviço aplica o padrão)', async () => {
     const res = await post({ type: 'vpn', browser: 'cloakbrowser' });
 

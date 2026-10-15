@@ -25,13 +25,18 @@ const PGID = '1000';
 const DEFAULT_TIMEZONE = 'Etc/UTC';
 // O CloakBrowser sobe KasmVNC (Xvnc) + Chrome: mesmo /dev/shm folgado do Brave.
 const SHM_SIZE = { chromium: 536870912, brave: 1073741824, cloakbrowser: 1073741824 };
-const BROWSERS = ['chromium', 'brave', 'cloakbrowser'];
+const BROWSERS = ['chromium', 'cloakbrowser'];
+// 'brave' saiu das opções (a UI só oferece Chromium e CloakBrowser), mas o
+// suporte fica: uma instância antiga gravada como brave segue a funcionar, em
+// vez de virar Chromium sem avisar.
+const LEGACY_BROWSERS = ['brave'];
 const DISPLAY_PORT = '3000/tcp';
 const HOST_GATEWAY_ALIAS = 'host.docker.internal:host-gateway';
 
 /** Normaliza o navegador pedido; qualquer valor desconhecido vira chromium. */
 function normalizeBrowser(browser) {
-  return BROWSERS.includes(browser) ? browser : 'chromium';
+  if (BROWSERS.includes(browser) || LEGACY_BROWSERS.includes(browser)) return browser;
+  return 'chromium';
 }
 
 /**

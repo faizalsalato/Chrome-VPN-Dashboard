@@ -47,9 +47,23 @@ const VpnCountries = {
     'Turkey', 'UK', 'USA', 'Ukraine', 'Uruguay', 'Venezuela', 'Vietnam'
   ],
 
+  /**
+   * Rótulos que diferem do valor: o gluetun aceita `Marocco` (grafia dele para
+   * Marrocos) e recusa `Morocco` — o valor tem de ser o que ele aceita, mas o
+   * usuário vê o nome certo.
+   */
+  labels: {
+    Marocco: 'Morocco'
+  },
+
   /** Lista do provedor (provedor desconhecido cai na da Surfshark). */
   for(provider) {
     return this[provider] || this.surfshark;
+  },
+
+  /** Rótulo a mostrar para um país da lista. */
+  labelFor(name) {
+    return this.labels[name] || name;
   },
 
   /**
@@ -61,7 +75,9 @@ const VpnCountries = {
     const list = this.for(provider);
     const wanted = current || select.value;
 
-    select.innerHTML = list.map((name) => `<option value="${name}">${name}</option>`).join('');
+    select.innerHTML = list
+      .map((name) => `<option value="${name}">${this.labelFor(name)}</option>`)
+      .join('');
     if (wanted && list.includes(wanted)) select.value = wanted;
   }
 };

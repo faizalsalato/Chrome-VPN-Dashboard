@@ -54,6 +54,20 @@ describe('vpn-countries — listas por provedor', () => {
     expect(lista).toContain('India');
   });
 
+  it('mostra Morocco mesmo quando o gluetun só aceita Marocco', () => {
+    const lista = VpnCountries.for('surfshark');
+
+    // O gluetun recusa «Morocco» (o valor tem de ser «Marocco»), mas o rótulo
+    // mostrado ao usuário é o nome certo.
+    expect(lista).toContain('Marocco');
+    expect(lista).not.toContain('Morocco');
+    expect(VpnCountries.labelFor('Marocco')).toBe('Morocco');
+
+    const select = { value: '', innerHTML: '' };
+    VpnCountries.fill(select, 'surfshark');
+    expect(select.innerHTML).toContain('<option value="Marocco">Morocco</option>');
+  });
+
   it('provedor desconhecido cai na lista da Surfshark', () => {
     expect(VpnCountries.for('outrovpn')).toBe(VpnCountries.for('surfshark'));
   });

@@ -9,7 +9,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Modo Proxy normal** — Chrome aponta direto para `host:porta` via `--proxy-server`
 - **Modo Proxy autenticado** — Chrome aponta para um forwarder local que injeta `Proxy-Authorization` (compatível com proxies que exigem usuário/senha, ex.: Bright Data)
 - **Start/Stop/Restart** — Controle individual de cada instância
-- **Escolha de navegador** — Cada instância usa **Chromium**, **Brave** ou **CloakBrowser** (selecionado na criação)
+- **Escolha de navegador** — Cada instância usa **Chromium** ou **CloakBrowser** (selecionado na criação). O Brave saiu das opções; uma instância antiga gravada como `brave` continua a funcionar
 - **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
 - **Motor de busca padrão (Google)** — O CloakBrowser não traz o Google na lista de motores que compila (tem Bing/DuckDuckGo/Ecosia): sem motor padrão, escrever uma palavra na barra de endereços **não pesquisa** — ela é tratada como endereço e dá erro de DNS. O container instala o Google por **política gerida** (`/etc/chromium/policies/managed/dashboard.json`), que vale para perfis novos e já existentes (a preferência do perfil é protegida pelo Chromium e é descartada). Muda com `BROWSER_SEARCH_NAME` / `BROWSER_SEARCH_URL`. A mesma política **desliga o DNS-over-HTTPS** (`DnsOverHttpsMode: off`) e a **pré-busca de rede** (`NetworkPredictionOptions: 2`, mais `--dns-prefetch-disable`): sem isso o nome é resolvido por HTTPS no resolver público do Google — que o whoer vê noutro país e **desconta 30% da nota de anonimato**. Com a política, quem resolve é o proxy/VPN da instância: o DNS acompanha o IP de saída
 - **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
@@ -101,18 +101,19 @@ Cada instância opera em um dos modos:
 
 > O forwarder é iniciado/parado automaticamente junto com a instância (criação, start, stop e remoção).
 
-## Navegadores (Chromium ou Brave)
+## Navegadores (Chromium ou CloakBrowser)
 
-Na criação da instância é possível escolher o navegador. Ambos usam imagens da LinuxServer.io com visualizador web (noVNC/Selkies) na porta 3000 e perfil em `/config`:
+Na criação da instância é possível escolher o navegador. O **Chromium** usa a imagem da LinuxServer.io com visualizador web (noVNC/Selkies) na porta 3000 e perfil em `/config`:
 
-| | Chromium (padrão) | Brave |
-|---|---|---|
-| Imagem | `lscr.io/linuxserver/chromium:latest` | `lscr.io/linuxserver/brave:latest` |
-| Variável de flags | `CHROME_CLI` | `BRAVE_CLI` |
-| shm | 512MB | 1GB (recomendado pela doc oficial) |
-| Coluna no DB | `browser = 'chromium'` | `browser = 'brave'` |
+| | Chromium (padrão) |
+|---|---|
+| Imagem | `lscr.io/linuxserver/chromium:latest` |
+| Variável de flags | `CHROME_CLI` |
+| shm | 512MB |
+| Coluna no DB | `browser = 'chromium'` |
 
-- **API**: envie `"browser": "brave"` (ou `"chromium"`) no `POST /api/instances`.
+- **Brave saiu das opções.** O suporte continua no código (`chrome-container.service.js`, com o `brave` na lista de navegadores legados) para uma instância antiga gravada como `brave` seguir a funcionar; a API recusa criar novas.
+- **API**: envie `"browser": "chromium"` (ou `"cloakbrowser"`) no `POST /api/instances`.
 - O **fingerprint** e o **proxy** funcionam idênticos nos dois navegadores (a extensão é injetada em `/config/fp-extension` e carregada com `--load-extension`).
 - A **troca de país da VPN** e a **troca de proxy** preservam o navegador escolhido.
 - O card exibe o badge do navegador (🦁 Brave / 🌀 Chromium).
@@ -401,7 +402,7 @@ KasmVNC, tudo na mesma porta publicada (`BASE_PORT + id`).
 
 A lista vem do **gluetun**, por provedor — cada um tem a sua e a grafia varia:
 
-- **Surfshark** (~100 países): `United States`, `United Kingdom`, `India`, `Puerto Rico`, `Marocco` (grafia do gluetun para Marrocos)…
+- **Surfshark** (~100 países): `United States`, `United Kingdom`, `India`, `Puerto Rico`, `Marocco` (o gluetun só aceita esta grafia; o rótulo mostrado é **Morocco**)…
 - **ExpressVPN** (~90 países): `USA`, `UK`, `India (via UK)` e `India (via Singapore)`, `Cayman Islands`, `Guam`…
 
 O seletor de país do dashboard (na criação e na troca de país) é preenchido com a lista do provedor escolhido, a partir de `public/js/vpn-countries.js`. O backend continua a traduzir nomes "por extenso" para o que a ExpressVPN espera (`United States → USA`, `United Kingdom → UK`, `India → India (via UK)`) em `src/services/gluetun-container.service.js`, para pedidos antigos ou feitos diretamente pela API.
