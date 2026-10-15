@@ -399,4 +399,9 @@ KasmVNC, tudo na mesma porta publicada (`BASE_PORT + id`).
 
 ## Países Disponíveis
 
-United States, United Kingdom, Canada, Germany, France, Netherlands, Switzerland, Japan, Singapore, Australia, Brazil, Italy, Spain, Sweden, Norway, Poland, India, South Korea, Mexico, Portugal
+A lista vem do **gluetun**, por provedor — cada um tem a sua e a grafia varia:
+
+- **Surfshark** (~100 países): `United States`, `United Kingdom`, `India`, `Puerto Rico`, `Marocco` (grafia do gluetun para Marrocos)…
+- **ExpressVPN** (~90 países): `USA`, `UK`, `India (via UK)` e `India (via Singapore)`, `Cayman Islands`, `Guam`…
+
+O seletor de país do dashboard (na criação e na troca de país) é preenchido com a lista do provedor escolhido, a partir de `public/js/vpn-countries.js`. O backend continua a traduzir nomes "por extenso" para o que a ExpressVPN espera (`United States → USA`, `United Kingdom → UK`, `India → India (via UK)`) em `src/services/gluetun-container.service.js`, para pedidos antigos ou feitos diretamente pela API.

@@ -179,6 +179,14 @@ const App = {
     ProxiesLib.fillCreateSelect();
 
     this._applyCreateTypeVisibility('vpn');
+
+    // A lista de países depende do provedor: cada um tem a sua no gluetun (a
+    // ExpressVPN chama «USA» aos Estados Unidos, a Surfshark «United States»).
+    const providerSel = document.getElementById('vpn-provider');
+    if (providerSel) {
+      providerSel.addEventListener('change', () => this._applyVpnCountries(providerSel.value));
+      this._applyVpnCountries(providerSel.value);
+    }
   },
 
   /** Liga os listeners do seletor de tipo e do proxy salvo (idempotente). */
@@ -221,6 +229,12 @@ const App = {
   _cloakEditionValue() {
     const el = document.getElementById('create-cloak-edition');
     return el && el.value === 'pro' ? 'pro' : 'free';
+  },
+
+  /** Preenche a lista de países do provedor escolhido (a lista vem do gluetun). */
+  _applyVpnCountries(provider) {
+    if (typeof VpnCountries === 'undefined') return;
+    VpnCountries.fill(document.getElementById('country-select'), provider);
   },
 
   /** Mostra/esconde os grupos VPN e Proxy conforme o tipo selecionado. */

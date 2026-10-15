@@ -411,11 +411,12 @@ const Instances = {
     const label = document.getElementById('country-dialog-label');
     const hint = document.getElementById('country-dialog-hint');
 
-    // A lista de países da VPN nasce no HTML; guardada na primeira abertura,
-    // volta sempre que o diálogo abre em modo VPN (senão ficava com os proxies).
-    if (!this._vpnCountries) {
-      this._vpnCountries = Array.from(select.options).map(o => ({ value: o.value, text: o.textContent }));
-    }
+    // A lista de países vem do PROVEDOR da instância (cada um tem a sua no
+    // gluetun: a ExpressVPN chama «USA» aos Estados Unidos, a Surfshark
+    // «United States»). No modo proxy o select leva a biblioteca de proxies.
+    const instance = this.instances.find((item) => String(item.id) === String(id));
+    const provider = (instance && instance.vpnProvider) || 'surfshark';
+    const currentCountry = (instance && instance.vpnInfo && instance.vpnInfo.country) || null;
 
     if (isProxy) {
       let proxies = [];
@@ -434,8 +435,8 @@ const Instances = {
         value: String(p.id),
         text: typeof ProxyLabel !== 'undefined' ? ProxyLabel.forPick(p) : `#${p.id}`
       })));
-    } else {
-      this._fillSelect(select, this._vpnCountries);
+    } else if (typeof VpnCountries !== 'undefined') {
+      VpnCountries.fill(select, provider, currentCountry);
     }
 
     if (title) title.textContent = isProxy ? 'Trocar Proxy' : 'Trocar País da VPN';
