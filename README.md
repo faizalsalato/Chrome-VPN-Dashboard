@@ -12,7 +12,7 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 - **Escolha de navegador** — Cada instância usa **Chromium** ou **CloakBrowser** (selecionado na criação). O Brave saiu das opções; uma instância antiga gravada como `brave` continua a funcionar
 - **Página inicial Google** — Todas as instâncias abrem no **Google** (padrão; muda com a env `BROWSER_HOME_URL`). Antes o CloakBrowser subia em `about:blank`, ou seja, tela em branco sem caixa de busca
 - **Motor de busca padrão (Google)** — O CloakBrowser não traz o Google na lista de motores que compila (tem Bing/DuckDuckGo/Ecosia): sem motor padrão, escrever uma palavra na barra de endereços **não pesquisa** — ela é tratada como endereço e dá erro de DNS. O container instala o Google por **política gerida** (`/etc/chromium/policies/managed/dashboard.json`), que vale para perfis novos e já existentes (a preferência do perfil é protegida pelo Chromium e é descartada). Muda com `BROWSER_SEARCH_NAME` / `BROWSER_SEARCH_URL`. A mesma política **desliga o DNS-over-HTTPS** (`DnsOverHttpsMode: off`) e a **pré-busca de rede** (`NetworkPredictionOptions: 2`, mais `--dns-prefetch-disable`): sem isso o nome é resolvido por HTTPS no resolver público do Google — que o whoer vê noutro país e **desconta 30% da nota de anonimato**. Com a política, quem resolve é o proxy/VPN da instância: o DNS acompanha o IP de saída
-- **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo noVNC (como no Chromium) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
+- **CloakBrowser (antidetect)** — Navegador com os patches de fingerprint aplicados no próprio binário: a **tela** abre pelo cliente web do **KasmVNC** (dentro da própria imagem, com **som**) e a **automação** conecta por **CDP** (Playwright/Puppeteer)
 - **Versão do CloakBrowser por instância** — Cada instância escolhe a versão **antiga (sem chave)** — o binário que vem na imagem, uma sessão em paralelo — ou a **nova (com licença)**: aí o container baixa o **binário mais recente** do vendor com a chave da biblioteca (é para esse que a licença Pro vale) e guarda-o num **volume partilhado** (`cloakbrowser-bin`), por isso o download acontece uma vez e não a cada recriação. Sem chave válida o download falha e o binário da imagem é usado na mesma. As chaves gerem-se no menu **Chaves CloakBrowser** (várias chaves; cada instância recebe a menos carregada). O botão **🔎 Verificar** desse menu pergunta ao vendor o plano, o prazo e os lugares em uso de cada chave — o prazo aparece destacado quando faltam 7 dias ou menos (e a vermelho quando já passou). O botão **⬆ Atualizar** atualiza o binário Pro para a versão mais recente do vendor **quando existir**: o wrapper (`cloakbrowser update`) só baixa se a versão resolvida for diferente da que está em cache — sem versão nova responde "já está na versão mais recente" e **nada é recriado**. Quando baixa, as instâncias Pro que estão a correr são recriadas com o binário novo (o perfil, os cookies e os logins ficam); as paradas apanham-no sozinhas no próximo start.
 - **Marcadores semeados no perfil** — Todo perfil abre com os mesmos atalhos na barra de marcadores: **Webmail** (`mail.rota.ath.cx`) e **Rubilax** diretos, e as pastas **Verificação** (IPinfo «qual é o meu IP» e Whoer) e **Redes sociais** (Facebook, Instagram, X, YouTube, TikTok, WhatsApp Web, Telegram Web, LinkedIn, Reddit, Pinterest) — nos três navegadores. O arquivo `Bookmarks` é escrito **antes de o navegador arrancar** e o merge é idempotente: **nunca apaga nem reordena** o que o usuário guardou, só acrescenta o que falta (pelo URL); um arquivo ilegível não é tocado. Cada navegador tem a sua pasta (`/profile/Default` no CloakBrowser; o perfil padrão da LinuxServer no Chromium/Brave) e o ficheiro nasce com o dono certo. A lista muda em `src/services/bookmarks.service.js`
 - **Trocar país da VPN** — Recria o container com nova localização
@@ -87,9 +87,11 @@ node src/server.js
 | `BROWSER_SEARCH_NAME` | `Google` | Nome do motor de busca padrão instalado por política nas instâncias CloakBrowser |
 | `BROWSER_SEARCH_URL` | `https://www.google.com/search?q={searchTerms}` | URL de pesquisa do motor padrão (o `{searchTerms}` é obrigatório) |
 | `BROWSER_SEARCH_SUGGEST_URL` | (sugestões do Google) | URL de sugestões do motor padrão |
-| `VNC_BASE_PORT` | `7001` | Porta base do noVNC no host (cada instância usa `BASE+id-1`) |
-| `VNC_VIEWER_IMAGE` | `chrome-vpn-dashboard-vnc:latest` | Imagem do viewer VNC das instâncias CloakBrowser |
-| `VNC_VIEWER_BASE` | `cloakhq/cloakbrowser:latest` | Imagem base usada no build do viewer |
+| `BROWSER_IMAGE` | `chrome-vpn-dashboard-browser:latest` | Imagem derivada (KasmVNC + áudio) construída a partir da oficial; o dashboard reconstrói sozinho quando a receita muda |
+| `KASM_PORT` | `9225` | Porta do cliente web do KasmVNC **dentro** do container (loopback; quem publica é o roteador) |
+| `AUDIO_RATE` | `24000` | Taxa do PCM que vai para o cliente web (24000 × 1 canal ≈ 48 kB/s) |
+| `AUDIO_CHANNELS` | `1` | Canais do áudio do container (2 dobra o tráfego) |
+| `MAX_UPLOAD_BYTES` | `0` | Teto por ficheiro no envio para o perfil (0 = sem teto; o limite é o disco) |
 
 ## Modos de Conexão
 
@@ -103,7 +105,7 @@ Cada instância opera em um dos modos:
 
 ## Navegadores (Chromium ou CloakBrowser)
 
-Na criação da instância é possível escolher o navegador. O **Chromium** usa a imagem da LinuxServer.io com visualizador web (noVNC/Selkies) na porta 3000 e perfil em `/config`:
+Na criação da instância é possível escolher o navegador. O **Chromium** usa a imagem da LinuxServer.io com visualizador web (**Selkies**, com áudio) na porta 3000 e perfil em `/config`:
 
 | | Chromium (padrão) |
 |---|---|
@@ -127,42 +129,49 @@ O terceiro navegador (**CloakBrowser**) não segue esse desenho — veja a seç�
 | | Chromium/Brave | CloakBrowser |
 |---|---|---|
 | Imagem | `lscr.io/linuxserver/...` | `cloakhq/cloakbrowser:latest` |
-| Acesso | Área de trabalho web (noVNC) | **CDP** na porta **9223** (túnel para o DevTools, que escuta só no loopback) + tela noVNC pelo container companheiro `vnc<id>` |
-| Como sobe | variável `CHROME_CLI`/`BRAVE_CLI` | binário lançado direto no Xvfb, com o túnel do CDP embutido no comando do container |
+| Acesso | Área de trabalho web (KasmVNC/Selkies) | **CDP** na porta **9223** (roteador para o DevTools, que escuta só no loopback) + tela do **KasmVNC** na MESMA porta |
+| Como sobe | variável `CHROME_CLI`/`BRAVE_CLI` | binário lançado no `Xvnc` do KasmVNC, com o roteador (CDP + tela + áudio) embutido no comando do container |
 | Fingerprint | Extensão MV3 injetada em `/config` | Flags de lançamento (`--fingerprint=`, `--lang=`, `--fingerprint-timezone=`…) — a extensão **não** é injetada |
 | Proxy autenticado | Forwarder local injeta `Proxy-Authorization` | Credenciais **inline** (`--proxy-server=https://user:pass@host:porta`) |
 | Porta publicada no modo VPN | `3000/tcp` (pelo gluetun) | `9223/tcp` (pelo gluetun) |
-| Tela | no kernel da própria imagem | container `vnc<id>` (x11vnc + noVNC) no host |
+| Tela | no kernel da própria imagem | **KasmVNC dentro da própria imagem** (cliente web + som, sem container companheiro) |
 
-### Tela (noVNC) e CDP no MESMO endereço
+### Tela (KasmVNC), áudio e CDP no MESMO endereço
 
-O binário antidetect não traz servidor VNC: ele sobe o Xvfb (`:99`) para o Chrome *headed* e só fala CDP. Quem dá tela ao perfil é um **container companheiro** `vnc<id>` (`deploy/vnc-viewer/`), que monta o **mesmo socket X** (volume `x11-<id>`, montado nos dois containers) e publica a área de trabalho com **x11vnc + noVNC**.
+A imagem derivada do CloakBrowser troca o `Xvfb` do entrypoint pelo **`Xvnc` do KasmVNC** (`deploy/browser-image/Dockerfile`): o mesmo processo que é o servidor X de `:99` serve também o cliente web da tela, já no tamanho de tela do perfil. **Não há container companheiro nem volume de socket X** — tela, áudio e navegador são o mesmo container.
 
-O vhost de um perfil CloakBrowser responde pelos dois caminhos, separados no nginx:
+O roteador da porta separa os caminhos:
 
 | Caminho | Vai para | Serve |
 |---|---|---|
-| `/json/`, `/devtools/`, `/fingerprint/` | porta do navegador (túnel do CDP) | descoberta e WebSocket do **CDP** |
-| todo o resto (`/`) | porta do viewer (`VNC_BASE_PORT+id-1`) | página do **noVNC** (tela) |
+| `/json/`, `/devtools/`, `/fingerprint/` | CDP (`127.0.0.1:9222`) | descoberta e WebSocket do **CDP** |
+| `/audio` | ponte de áudio (`127.0.0.1:9226`) | fluxo **PCM** que o cliente web toca (ver *Áudio da tela*) |
+| todo o resto (`/`) | tela do KasmVNC (`127.0.0.1:9225`) | cliente web da **tela** |
 
 - **Card**: mostra **só o botão 🖥 Abrir tela** (a porta e a URL saíram do cartão); o `CDP` continua a sair na API (`GET /api/instances`).
-- **Ciclo de vida**: o viewer sobe, para e é removido junto com a instância (`docker.service.js`); se o viewer falhar, o CDP continua funcionando — o log avisa e a tela fica indisponível até o próximo start.
-- **Volume**: `x11-<id>` só existe para ligar viewer e navegador da mesma instância, e é removido junto com o perfil.
-- **Instâncias antigas**: ao dar start, o vhost é reescrito no formato acima e o container do navegador é recriado se ainda não tiver o volume do socket X.
+- **Ciclo de vida**: a tela sobe, para e é removida junto com a instância — é o mesmo container.
+- **Perfil**: o que sobrevive entre recriações é o volume `cloakbrowser-profile-<id>` (cookies, logins, marcadores e os ficheiros enviados), removido só quando a instância é removida.
+- **Instâncias antigas**: ao dar start, o container é recriado com o comando novo (roteador + áudio) e o vhost é reescrito.
 
-### O túnel do CDP (por que a porta é 9223)
+### O roteador da porta (por que a porta é 9223)
 
-O binário do CloakBrowser **prende o DevTools em `127.0.0.1`** e ignora `--remote-debugging-address` (proteção do próprio produto): o loopback do container não é alcançável pela porta publicada. Por isso o comando do container sobe, antes do navegador, um encaminhador TCP de ~90 linhas (`src/browser/cdp-tunnel.py`, sem dependências) que escuta em `0.0.0.0:9223` e repassa cada conexão para o loopback:
+O binário do CloakBrowser **prende o DevTools em `127.0.0.1`** e ignora `--remote-debugging-address` (proteção do próprio produto): o loopback do container não é alcançável pela porta publicada. A tela do KasmVNC e a ponte de áudio também ficam no loopback — não faz sentido expor o cliente web direto.
+
+Por isso o comando do container sobe, antes do navegador, o `src/browser/port-router.py` (só biblioteca padrão). Ele escuta em `0.0.0.0:9223` e escolhe o destino pelo **caminho** da requisição; depois disso os bytes seguem intactos (é um túnel TCP puro), então os WebSockets do CDP e do KasmVNC atravessam sem tradução:
 
 ```
-nginx ──▶ porta publicada (9223, publicada pelo gluetun no modo VPN) ──▶ túnel (0.0.0.0:9223) ──▶ Chrome (127.0.0.1:9222)
+nginx ──▶ porta publicada (9223, publicada pelo gluetun no modo VPN)
+                │
+                ├── /json, /devtools, /fingerprint ──▶ Chrome (127.0.0.1:9222)
+                ├── /audio                        ──▶ ponte  (127.0.0.1:9226)
+                └── todo o resto (/)              ──▶ tela   (127.0.0.1:9225)
 ```
 
 Consequências práticas:
 
-- A porta publicada de um perfil CloakBrowser é **9223** (não 9222, que fica só no loopback).
-- O túnel vai **embutido no comando do container** (heredoc no `Cmd`). Ele faz parte da spec: mudar o script recria o container que estiver rodando com a versão anterior.
-- Uma instância **já em execução** não troca de spec sozinha — o `start` só recria o container quando o fuso/idioma do perfil mudou. O túnel entra na próxima recriação (botão de reiniciar o perfil com o container parado, ou mudança de fuso/país).
+- A porta publicada de um perfil CloakBrowser é **9223** (não 9222, que fica só no loopback) — e é a **única** porta da instância: CDP, tela e áudio saem por ela.
+- O roteador vai **embutido no comando do container** (heredoc no `Cmd`). Ele faz parte da spec: mudar o script recria o container que estiver rodando com a versão anterior.
+- Uma instância **já em execução** só troca de spec quando é reiniciada: o `start` recria o container quando o comando mudou (foi assim que o áudio chegou às instâncias que já existiam).
 
 ### Como conectar
 
@@ -183,7 +192,7 @@ with sync_playwright() as pw:
 - **Nginx**: os caminhos do CDP (`/json/`, `/devtools/`, `/fingerprint/`) exigem dois ajustes, ambos no vhost:
   - o `Host` é trocado para `127.0.0.1:<porta>` — o Chrome responde **500** (`Host header is specified and is not an IP address or localhost`) a qualquer outro valor;
   - como o Chrome monta o `webSocketDebuggerUrl` a partir desse `Host`, o corpo da resposta é reescrito com `sub_filter` (resposta descomprimida, `sub_filter_types application/json`) para `ws://chromeN.DOMINIO` (vhost HTTP) ou `wss://chromeN.DOMINIO` (vhost HTTPS) — sem isso o cliente receberia um endereço de loopback, inalcançável de fora.
-  - Os cabeçalhos de upgrade (`Upgrade`/`Connection`) valem para os dois caminhos, então o WebSocket do CDP e o do noVNC passam pelo mesmo vhost.
+  - Os cabeçalhos de upgrade (`Upgrade`/`Connection`) valem para os dois caminhos, então o WebSocket do CDP e o do KasmVNC passam pelo mesmo vhost.
 
 ## Provedores VPN (Surfshark / ExpressVPN)
 
