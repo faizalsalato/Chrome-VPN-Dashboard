@@ -25,10 +25,9 @@ Dashboard web para gerenciamento de instâncias Chrome com **VPN** (Gluetun + Su
 ## Requisitos
 
 - Ubuntu 20.04+
-- Docker instalado
-- Nginx instalado
-- Certbot instalado (`apt install certbot python3-certbot-nginx`)
-- Node.js 20+
+- **Docker** — o instalador instala, se faltar (é ele que cria as instâncias)
+- **Node.js 20+**, **Nginx** e **Certbot** — o instalador instala, se faltarem
+- **Root** — o script mexe em apt, systemd e nginx (no firewall só avisa)
 - **DNS**: o domínio do painel **e** o curinga `*.<domínio>` apontando para o servidor (cada instância ganha `chromeN.<domínio>`)
 
 ## Instalação Rápida

@@ -59,6 +59,13 @@ AJUDA
   esac
 done
 
+# Tudo aqui mexe em apt, systemd e nginx: sem root o script para no meio.
+if [ "$(id -u)" != "0" ]; then
+  echo "❌ Rode como root (ex.: sudo -i, depois ./install-and-run.sh)."
+  echo "   O script instala pacotes, cria o serviço systemd e configura o nginx."
+  exit 1
+fi
+
 # Domínio: rótulos com letras/números/hífen, separados por ponto, com pelo
 # menos um ponto e uma extensão de 2+ letras. Nada de http://, barras, espaços
 # ou ponto final (o certificado do Let's Encrypt recusaria).
@@ -257,14 +264,24 @@ fi
 
 echo "✅ Node.js $(node --version)"
 
-# O dashboard cria containers (navegador, gluetun) e fala com o Docker do host.
-# Sem ele o painel sobe, mas nenhuma instância é criada.
-if ! command -v docker &> /dev/null; then
-  echo "⚠️  Docker não encontrado — instale-o antes de criar instâncias."
-elif ! docker info &> /dev/null; then
-  echo "⚠️  Docker instalado, mas o daemon não responde: verifique 'systemctl status docker'."
-else
+# 2. Docker: o dashboard cria containers (navegador, gluetun) e fala com o
+#    Docker do HOST — sem ele o painel sobe, mas nenhuma instância é criada.
+if command -v docker &> /dev/null && docker info &> /dev/null; then
   echo "✅ Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
+else
+  echo "📦 Instalando Docker..."
+  if curl -fsSL https://get.docker.com | sh; then
+    systemctl enable --now docker >/dev/null 2>&1 || true
+    sleep 3
+    if docker info &> /dev/null; then
+      echo "✅ Docker $(docker --version | cut -d' ' -f3 | tr -d ',')"
+    else
+      echo "⚠️  Docker instalado, mas o daemon não responde: verifique 'systemctl status docker'."
+    fi
+  else
+    echo "⚠️  Não consegui instalar o Docker automaticamente."
+    echo "    Instale à mão (https://docs.docker.com/engine/install/) e rode este script de novo."
+  fi
 fi
 
 # 2. Criar diretório da aplicação
@@ -323,7 +340,7 @@ fi
 # 7. Configurar Nginx + SSL
 echo ""
 echo "🌐 Configurando Nginx + HTTPS..."
-apt-get install -y nginx certbot python3-certbot-nginx
+apt-get install -y nginx certbot python3-certbot-nginx openssl curl
 
 # 6. Criar serviço systemd (fonte da verdade do ambiente: o dashboard
 #    lê process.env, NÃO .env — daí as variáveis irem em Environment=).
@@ -411,6 +428,14 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl reload nginx
 echo "✅ Nginx configurado (HTTP)"
+
+# Firewall: se o ufw estiver ativo, 80/443 têm de estar liberados — senão o
+# certificado não é emitido e o painel não responde de fora. O script NÃO mexe
+# nas regras do firewall (isso é decisão de quem administra o servidor).
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q 'Status: active'; then
+  echo "ℹ️  ufw ativo — confirme que 80 e 443 estão liberados:"
+  echo "    ufw allow 80/tcp && ufw allow 443/tcp"
+fi
 
 # 5. Obter certificado SSL com Let's Encrypt (painel + wildcard por
 #    subdomínio NÃO é coberto aqui — cada instância pede o seu cert
