@@ -18,10 +18,12 @@ app.set('trust proxy', 'loopback');
 
 // Middleware
 app.use(cors());
-// O envio de ficheiros para o perfil viaja em base64 no corpo: o limite tem de
-// acompanhar (o padrão do Express é 100 kB). O teto por ficheiro é o mesmo do
-// profile-files.service, para a mensagem de erro bater certo.
-app.use(express.json({ limit: '25mb' }));
+// O envio de ficheiros para o perfil NÃO passa por aqui: ele vai cru
+// (`application/octet-stream`) e é lido em streaming pela rota, sem teto. Este
+// limite só vale para o corpo JSON — inclusive o contrato antigo de upload, que
+// manda o ficheiro em base64 (33% maior) dentro do JSON. Fica folgado para uma
+// página antiga em cache ainda conseguir enviar; o caminho novo não depende dele.
+app.use(express.json({ limit: '64mb' }));
 
 // Carimbo nas URLs dos assets (JS/CSS) do HTML. Sem isto o browser pode
 // continuar a usar o ficheiro antigo depois de um deploy e o usuário jura que a
