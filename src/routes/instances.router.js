@@ -27,7 +27,7 @@ router.post('/', async (req, res, next) => {
   try {
     const body = req.body || {};
     const {
-      country, type = 'vpn', proxy, fingerprint, browser, vpnProvider, cloakEdition, proxyId
+      country, type = 'vpn', proxy, fingerprint, browser, vpnProvider, cloakEdition, proxyId, name
     } = body;
 
     if (type !== 'vpn' && type !== 'proxy') {
@@ -102,7 +102,7 @@ router.post('/', async (req, res, next) => {
     // geo do proxy que o cartão mostra. Montar o objeto à mão já deixou cair
     // estes dois campos — a instância nascia "sem licença" sem aviso.
     const instance = await instanceService.create({
-      country, type, proxy: proxyConfig, fingerprint, browser, vpnProvider, cloakEdition, proxyId
+      country, type, proxy: proxyConfig, fingerprint, browser, vpnProvider, cloakEdition, proxyId, name
     });
     res.status(201).json(instance);
   } catch (err) {
@@ -111,6 +111,42 @@ router.post('/', async (req, res, next) => {
         error: 'CreateError',
         message: err.message
       });
+    }
+    next(err);
+  }
+});
+
+// PATCH /api/instances/:id - Edita a instância. Por agora só o NOME (o rótulo
+// que o cartão mostra); mudar o resto (país, proxy, versão) tem rotas próprias,
+// porque essas mexem no container e esta não mexe em nada.
+router.patch('/:id', async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id) || id < 1) {
+    return res.status(400).json({
+      error: 'ValidationError',
+      message: 'ID de instância inválido'
+    });
+  }
+
+  const body = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(body, 'name')) {
+    return res.status(400).json({
+      error: 'ValidationError',
+      message: 'Nada para alterar (envie "name")'
+    });
+  }
+
+  try {
+    const result = await instanceService.rename(id, body.name);
+    res.json({
+      message: result.name
+        ? `Instância ${id} renomeada para "${result.name}"`
+        : `Instância ${id} voltou a ser só o número`,
+      ...result
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: 'UpdateError', message: err.message });
     }
     next(err);
   }

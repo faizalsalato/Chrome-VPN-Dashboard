@@ -39,8 +39,11 @@ const EXIT_ALIGN_LATE_DELAYS_MS = [45000, 120000];
 // re-injeta a extensão — nunca recria o container — então não derruba a
 // sessão de quem está usando o navegador.
 const EXIT_WATCH_INTERVAL_MS = parseInt(process.env.EXIT_WATCH_INTERVAL_MS || '120000', 10);
+// Rótulo da instância (o nome que o usuário dá — "conta da loja"). Curto de
+// propósito: cabe no título do cartão sem empurrar os selos.
+const NAME_MAX = 60;
 const ROW_COLUMNS =
-  'id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, ' +
+  'id, port, subdomain, name, type, proxy_host, proxy_port, proxy_user, proxy_pass, ' +
   'proxy_scheme, proxy_auth, proxy_id, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id';
 
 class InstanceService {
@@ -95,6 +98,9 @@ class InstanceService {
         return {
           ...instance,
           type,
+          // Rótulo dado pelo usuário (null quando nunca foi nomeada): o cartão
+          // mostra-o antes dos selos, para reconhecer a instância de relance.
+          name: (meta && meta.name) || null,
           browser: (meta && meta.browser) || 'chromium',
           cdp: this._cdpFor(instance, meta),
           vnc: this._vncFor(instance, meta),
@@ -103,6 +109,9 @@ class InstanceService {
           // licença): é o que o cartão usa para mostrar/trocar.
           cloakEdition: cloakbrowser.editionOf({ cloakEdition: meta && meta.cloak_edition }),
           proxyInfo: type === 'proxy' && meta ? this._proxyInfoFromRow(meta) : null,
+          // Id na biblioteca: é o que o diálogo de edição usa para pré-selecionar
+          // o proxy atual e só enviar a troca quando ela for de verdade.
+          proxyId: type === 'proxy' && meta ? (meta.proxy_id || null) : null,
           // Onde o proxy sai (do último teste na biblioteca); null quando o proxy
           // não está (ou já não está) na biblioteca.
           proxyGeo: type === 'proxy' && meta ? (proxyGeo.get(meta.proxy_id) || null) : null,
@@ -123,7 +132,7 @@ class InstanceService {
     const port = await this.getNextAvailablePort();
     const id = port - BASE_PORT + 1;
 
-    const config = { id, port, domain: DOMAIN, type, browser };
+    const config = { id, port, domain: DOMAIN, type, browser, name: this.cleanName(options.name) };
 
     // Edição do CloakBrowser (só faz sentido nele): 'free' = binário antigo, sem
     // chave; 'pro' = binário novo com uma chave da biblioteca. Sem chaves na
@@ -244,6 +253,48 @@ class InstanceService {
 
     getDb().prepare('DELETE FROM instances WHERE id = ?').run(id);
     console.log(`[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} removida`);
+  }
+
+  /**
+   * Renomeia uma instância.
+   *
+   * É só o RÓTULO: nada no container, no perfil ou no nginx é tocado — a
+   * instância continua a ser a mesma (mesmo número, mesma sessão), só passa a
+   * ter um nome para o usuário reconhecer ("conta da loja", "cliente X").
+   *
+   * @returns {Promise<{id: number, name: string|null}>}
+   */
+  async rename(id, name) {
+    const row = this._rowFor(id);
+    if (!row) {
+      throw Object.assign(new Error(`Instância ${id} não encontrada`), { status: 404 });
+    }
+
+    const clean = this.cleanName(name);
+    getDb().prepare('UPDATE instances SET name = ? WHERE id = ?').run(clean, id);
+    console.log(
+      `[${new Date().toISOString()}] [INFO] [instance-service] Instância ${id} ` +
+      (clean ? `renomeada para "${clean}"` : 'sem nome (rótulo removido)')
+    );
+    return { id, name: clean };
+  }
+
+  /**
+   * Nome de instância: rótulo curto e seguro.
+   *
+   * Vazio (ou só espaços) vira `null` — a instância volta a ser identificada só
+   * pelo número. Caracteres de controlo saem (não há nada de útil neles num
+   * rótulo e estragariam o título do cartão) e o resto é cortado em `NAME_MAX`.
+   */
+  cleanName(value) {
+    if (value === undefined || value === null) return null;
+
+    const text = String(value)
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return text ? text.slice(0, NAME_MAX) : null;
   }
 
   async start(id) {
@@ -1026,12 +1077,13 @@ class InstanceService {
     const isCloak = cloakbrowser.isCloakBrowser(browser);
     getDb().prepare(
       `INSERT OR REPLACE INTO instances
-       (id, port, subdomain, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, proxy_id, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, port, subdomain, name, type, proxy_host, proxy_port, proxy_user, proxy_pass, proxy_scheme, proxy_auth, proxy_id, fingerprint, browser, vpn_provider, cloak_edition, cloak_license_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       port,
       `chrome${id}.${DOMAIN}`,
+      config.name || null,
       type,
       type === 'proxy' ? config.proxy.host : null,
       type === 'proxy' ? config.proxy.port : null,
@@ -1094,6 +1146,7 @@ class InstanceService {
     const decorated = Object.assign({}, instance, {
       browser,
       vpnProvider,
+      name: config.name || null,
       fingerprint: fingerprint || config.fingerprint || null
     });
 

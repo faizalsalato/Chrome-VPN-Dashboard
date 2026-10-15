@@ -77,8 +77,12 @@ const Instances = {
           : `<span class="type-badge surfshark" title="Provedor VPN: Surfshark">Surf</span>`)
       : '';
 
-    // Título = número da instância + selos, separados por "|".
-    const titleHtml = [String(instance.id), typeBadge, browserBadge, vpnProviderBadge]
+    // Título = número da instância + nome (quando há) + selos, separados por "|".
+    // O nome vem do usuário, então vai escapado: o cartão é montado como HTML.
+    const nameHtml = instance.name
+      ? `<span class="instance-name" title="${this._escape(instance.name)}">${this._escape(instance.name)}</span>`
+      : '';
+    const titleHtml = [String(instance.id), nameHtml, typeBadge, browserBadge, vpnProviderBadge]
       .filter(Boolean)
       .join(' <span class="title-sep">|</span> ');
 
@@ -189,6 +193,11 @@ const Instances = {
             <span class="btn-text">🔄 Restart</span>
             <span class="btn-loading"><span class="spinner"></span></span>
           </button>
+          <button class="btn btn-secondary btn-sm action-edit" data-id="${instance.id}"
+                  title="Editar a instância: nome, saída (país/proxy) e versão do CloakBrowser">
+            <span class="btn-text">✏ Editar</span>
+            <span class="btn-loading"><span class="spinner"></span></span>
+          </button>
           ${isCloak ? `<button class="btn btn-secondary btn-sm action-cloak-edition" data-id="${instance.id}" data-edition="${cloakEdition}"
                   title="${cloakEdition === 'pro' ? 'Versão nova do CloakBrowser (com licença)' : 'Versão antiga do CloakBrowser (sem chave)'}">
             <span class="btn-text">🗝️ ${cloakEdition === 'pro' ? 'Licença' : 'Antiga'}</span>
@@ -258,6 +267,11 @@ const Instances = {
     // Restart buttons
     document.querySelectorAll('.action-restart').forEach(btn => {
       btn.addEventListener('click', (e) => this.handleRestart(e));
+    });
+
+    // Edit buttons (nome + saída + versão)
+    document.querySelectorAll('.action-edit').forEach(btn => {
+      btn.addEventListener('click', (e) => this.handleEdit(e));
     });
 
     // CloakBrowser edition buttons
@@ -493,6 +507,156 @@ const Instances = {
       option.textContent = o.text;
       select.append(option);
     });
+  },
+
+  /**
+   * Abre o diálogo de edição da instância.
+   *
+   * Três coisas se editam aqui, e só a primeira é "de graça":
+   *
+   *   * NOME — rótulo do cartão; nada no container é tocado;
+   *   * SAÍDA — país da VPN ou proxy da biblioteca: reinicia a instância para
+   *     sair por outro sítio (o perfil, com os logins, fica);
+   *   * VERSÃO do CloakBrowser — binário antigo (sem chave) ou novo (com
+   *     licença), também com reinício.
+   *
+   * Só o que MUDOU é enviado: a saída abre com "manter a atual" selecionado,
+   * senão abrir o diálogo e salvar reiniciaria a instância à toa.
+   */
+  async handleEdit(e) {
+    const id = e.currentTarget.dataset.id;
+    const instance = this.instances.find((item) => String(item.id) === String(id));
+    if (!instance) return;
+
+    const dialog = document.getElementById('edit-dialog');
+    const nameInput = document.getElementById('edit-name');
+    const outputSelect = document.getElementById('edit-output');
+    const outputLabel = document.getElementById('edit-output-label');
+    const outputHint = document.getElementById('edit-output-hint');
+    const editionGroup = document.getElementById('edit-edition-group');
+    const editionSelect = document.getElementById('edit-edition');
+    const dialogId = document.getElementById('edit-dialog-id');
+
+    const type = instance.type || 'vpn';
+    const isCloak = instance.browser === 'cloakbrowser';
+
+    if (dialogId) dialogId.textContent = `#${instance.id}`;
+    nameInput.value = instance.name || '';
+    editionSelect.value = instance.cloakEdition === 'pro' ? 'pro' : 'free';
+    if (editionGroup) editionGroup.classList.toggle('hidden', !isCloak);
+
+    // A saída: a VPN escolhe o país (lista do provedor da instância); o proxy
+    // escolhe um proxy da biblioteca. Nos dois casos a primeira opção é MANTER.
+    if (type === 'proxy') {
+      let proxies = [];
+      try {
+        const data = await API.get('/proxies');
+        proxies = data.proxies || [];
+      } catch (err) {
+        App.showToast(err.message || 'Erro ao carregar a biblioteca de proxies', 'error');
+        return;
+      }
+      if (outputLabel) outputLabel.textContent = 'Proxy (pelo país de saída)';
+      if (outputHint) outputHint.classList.remove('hidden');
+      this._fillSelect(outputSelect, [
+        { value: '', text: '— manter o proxy atual —' },
+        ...proxies.map((p) => ({
+          value: String(p.id),
+          text: typeof ProxyLabel !== 'undefined' ? ProxyLabel.forPick(p) : `#${p.id}`
+        }))
+      ]);
+    } else {
+      if (outputLabel) outputLabel.textContent = 'País da VPN';
+      if (outputHint) outputHint.classList.add('hidden');
+      this._fillSelect(outputSelect, [{ value: '', text: '— manter o país atual —' }]);
+      if (typeof VpnCountries !== 'undefined') {
+        VpnCountries.fill(outputSelect, instance.vpnProvider || 'surfshark', null);
+      }
+    }
+    // Sem isto a lista de países deixaria o PRIMEIRO país selecionado — e salvar
+    // o nome trocaria o país sem o usuário pedir.
+    outputSelect.value = '';
+
+    dialog.classList.remove('hidden');
+    nameInput.focus();
+    this._bindEditActions(id, instance, { dialog, nameInput, outputSelect, editionSelect, isCloak, type });
+  },
+
+  /** Liga os botões do diálogo de edição (clonados para não acumular listeners). */
+  _bindEditActions(id, instance, refs) {
+    const { dialog, nameInput, outputSelect, editionSelect, isCloak, type } = refs;
+
+    const cancelBtn = document.getElementById('edit-cancel');
+    const confirmBtn = document.getElementById('edit-confirm');
+    const newCancel = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+    const newConfirm = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+
+    newCancel.addEventListener('click', () => dialog.classList.add('hidden'));
+
+    newConfirm.addEventListener('click', async () => {
+      const nome = nameInput.value.trim();
+      const saida = outputSelect.value;
+      const edicao = editionSelect.value;
+      const atual = instance.cloakEdition === 'pro' ? 'pro' : 'free';
+
+      const trocarNome = nome !== (instance.name || '');
+      // No proxy dá para comparar com o atual; na VPN o país atual só é conhecido
+      // com a instância a correr, então vale a escolha explícita do usuário.
+      const trocarSaida = type === 'proxy'
+        ? !!saida && String(instance.proxyId || '') !== saida
+        : !!saida;
+      const trocarEdicao = isCloak && edicao !== atual;
+
+      if (!trocarNome && !trocarSaida && !trocarEdicao) {
+        dialog.classList.add('hidden');
+        return;
+      }
+
+      newConfirm.classList.add('loading');
+      newConfirm.disabled = true;
+
+      const feitos = [];
+      try {
+        if (trocarNome) {
+          await API.request('PATCH', `/instances/${id}`, { name: nome });
+          feitos.push(nome ? `Nome: "${nome}"` : 'Nome removido');
+        }
+        if (trocarSaida) {
+          if (type === 'proxy') {
+            await API.post(`/instances/${id}/proxy`, { proxyId: saida });
+            feitos.push('Proxy trocado');
+          } else {
+            await API.post(`/instances/${id}/country`, { country: saida });
+            feitos.push(`País: ${saida}`);
+          }
+        }
+        if (trocarEdicao) {
+          await API.post(`/instances/${id}/cloak-edition`, { edition: edicao });
+          feitos.push(edicao === 'pro' ? 'Versão com licença' : 'Versão antiga');
+        }
+
+        App.showToast(feitos.join(' · '), 'success');
+        await Polling.fetchNow();
+      } catch (err) {
+        App.showToast(err.message || 'Erro ao editar a instância', 'error');
+      } finally {
+        dialog.classList.add('hidden');
+        newConfirm.classList.remove('loading');
+        newConfirm.disabled = false;
+      }
+    });
+  },
+
+  /** Escapa texto do usuário antes de entrar no HTML do cartão. */
+  _escape(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   },
 
   handleRemove(e) {

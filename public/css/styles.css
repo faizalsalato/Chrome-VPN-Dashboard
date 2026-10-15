@@ -668,8 +668,21 @@ a:hover {
   font-size: 0.8125rem;
 }
 
+/* Nome da instância (o rótulo que o usuário dá) no título do cartão: fica entre o
+   número e os selos, e encurta com "…" em vez de empurrar a linha. Precisa de
+   ser inline-block para o overflow funcionar. */
+.instance-name {
+  display: inline-block;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  vertical-align: bottom;
+}
+
 /* Card Actions — grade flexível: os botões quebram para a linha seguinte em vez
-   de encolher até o texto ficar ilegível (5 botões num cartão estreito). */
+   de encolher até o texto ficar ilegível (são 8 num cartão estreito). */
 .card-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));

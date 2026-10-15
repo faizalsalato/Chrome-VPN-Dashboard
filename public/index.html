@@ -253,6 +253,45 @@
       </div>
     </div>
 
+    <!-- Edit Instance Dialog (nome + a saída: país/proxy + versão do CloakBrowser) -->
+    <div id="edit-dialog" class="dialog-overlay hidden">
+      <div class="dialog" role="dialog" aria-modal="true">
+        <h2 class="dialog-title">✏ Editar Instância <span id="edit-dialog-id"></span></h2>
+
+        <div class="form-group">
+          <label for="edit-name">Nome (opcional)</label>
+          <input type="text" id="edit-name" class="form-input" maxlength="60"
+                 placeholder="ex: conta da loja" autocomplete="off" />
+          <p class="form-hint">
+            É só um rótulo para reconhecer a instância no cartão — não muda nada no
+            navegador nem na sessão. Vazio volta a mostrar só o número.
+          </p>
+        </div>
+
+        <div id="edit-output-group" class="form-group">
+          <label id="edit-output-label" for="edit-output">Saída</label>
+          <select id="edit-output" class="form-select"></select>
+          <p id="edit-output-hint" class="form-hint">
+            Trocar a saída reinicia a instância (o perfil, com os logins, fica).
+          </p>
+        </div>
+
+        <div id="edit-edition-group" class="form-group">
+          <label for="edit-edition">Versão do CloakBrowser</label>
+          <select id="edit-edition" class="form-select">
+            <option value="free">Antiga — sem chave (uma sessão por vez)</option>
+            <option value="pro">Nova — com licença</option>
+          </select>
+          <p class="form-hint">Trocar a versão também reinicia a instância.</p>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="edit-cancel" class="btn btn-secondary">Cancelar</button>
+          <button id="edit-confirm" class="btn btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- VPN Credentials Dialog -->
     <div id="vpn-creds-dialog" class="dialog-overlay hidden">
       <div class="dialog" role="dialog" aria-modal="true">

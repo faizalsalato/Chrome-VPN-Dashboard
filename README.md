@@ -266,7 +266,7 @@ O mascaramento atua **dentro da página** (JS, via content script em `world: "MA
 
 - **URL**: `http://IP_DO_SERVIDOR:3100` (ou via Nginx/Cloudflared)
 - **Login**: `admin` / `admin123`
-- **Cartão da instância**: mostra **só o botão 🖥 Abrir tela** (no CloakBrowser é a tela do KasmVNC; no Chromium/Brave é a área de trabalho do subdomínio). A **porta** e a **URL** saíram do cartão. O título é curto e separado por `|` — `1 | Cloak | Surf` (número | tipo | navegador | provedor VPN).
+- **Cartão da instância**: mostra **só o botão 🖥 Abrir tela** (no CloakBrowser é a tela do KasmVNC; no Chromium/Brave é a área de trabalho do subdomínio). A **porta** e a **URL** saíram do cartão. O título é curto e separado por `|` — `1 | Cloak | Surf` (número | tipo | navegador | provedor VPN); com nome, ele entra logo depois do número (`1 | conta da loja | Cloak | Surf`) e encurta com `…` se for comprido.
 
 ## Estrutura
 
@@ -460,6 +460,26 @@ mostra a percentagem durante o envio).
 > O contrato antigo (JSON `{name, data}` com base64) continua a funcionar, para
 > scripts — mas é ele que fica sujeito ao teto e ao limite de corpo do
 > `express.json`.
+
+### Editar / renomear a instância (✏ Editar)
+
+O botão **✏ Editar** do cartão abre um diálogo com o que dá para mudar:
+
+| Campo | O que acontece |
+| --- | --- |
+| **Nome** | É só o rótulo do cartão (`1 | conta da loja | Cloak | Surf`). **Não toca no container**: o navegador, o perfil e os logins continuam exatamente onde estão. Vazio volta a mostrar só o número. |
+| **Saída** (país da VPN ou proxy da biblioteca) | Reinicia a instância para sair por outro sítio. O **perfil é preservado** — cookies e logins ficam. Vem com "manter a atual" já selecionado. |
+| **Versão do CloakBrowser** | Alterna entre o binário antigo (sem chave) e o novo (com licença da biblioteca). Também reinicia. |
+
+Só o que **mudou** é enviado: abrir o diálogo e salvar sem mexer em nada não
+reinicia instância nenhuma. O nome também pode ser dado já na criação.
+
+- **API**: `PATCH /api/instances/:id` com `{"name": "conta da loja"}` — nome vazio
+  tira o rótulo. O nome é saneado no servidor (espaços repetidos viram um só,
+  caracteres de controlo saem, sobra cortada em 60 caracteres) e vai **escapado**
+  para o HTML do cartão.
+- Trocar a saída ou a versão usa as rotas que já existiam:
+  `POST /:id/country`, `POST /:id/proxy` e `POST /:id/cloak-edition`.
 
 
 
