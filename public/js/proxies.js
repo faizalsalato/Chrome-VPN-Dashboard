@@ -87,6 +87,12 @@ const ProxiesLib = {
       });
     }
 
+    const removerTodos = document.getElementById('proxies-remove-all');
+    if (removerTodos && !removerTodos.dataset.bound) {
+      removerTodos.dataset.bound = '1';
+      removerTodos.addEventListener('click', () => this.confirmRemoveAll());
+    }
+
     if (!this._escBound) {
       this._escBound = true;
       document.addEventListener('keydown', (e) => {
@@ -112,6 +118,10 @@ const ProxiesLib = {
       App.showToast(err.message || 'Erro ao carregar proxies', 'error');
     }
     this._cache = proxies;
+
+    // Sem proxies não há o que eliminar (o botão fica apagado).
+    const removerTodos = document.getElementById('proxies-remove-all');
+    if (removerTodos) removerTodos.disabled = !proxies.length;
 
     list.textContent = '';
 
@@ -216,6 +226,39 @@ const ProxiesLib = {
   /* ============================================================
      Remoção
      ============================================================ */
+
+  /** Confirma e remove TODOS os proxies da biblioteca. */
+  confirmRemoveAll() {
+    const total = (this._cache || []).length;
+    if (!total) {
+      App.showToast('A biblioteca já está vazia', 'error');
+      return;
+    }
+
+    App.showConfirmDialog(
+      'Eliminar todos os proxies',
+      `Remover os ${total} proxy(es) da biblioteca? As instâncias que usam um proxy continuam a funcionar (o endereço fica guardado nelas) — só deixam de mostrar a geo do proxy no cartão.`,
+      () => this.removeAll()
+    );
+  },
+
+  /** DELETE /api/proxies — esvazia a biblioteca de uma vez. */
+  async removeAll() {
+    const btn = document.getElementById('proxies-remove-all');
+    this._setBusy(btn, true);
+
+    try {
+      const result = await API.delete('/proxies');
+      this._results = {};
+      App.showToast(result.message || 'Proxies removidos', 'success');
+    } catch (err) {
+      App.showToast(err.message || 'Erro ao eliminar os proxies', 'error');
+    } finally {
+      // O refresh é que decide o estado final do botão (sem proxies = disabled).
+      this._setBusy(btn, false);
+      await this.refresh();
+    }
+  },
 
   confirmRemove(id) {
     const card = document.querySelector(`[data-proxy-card="${id}"]`);

@@ -116,6 +116,25 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
+// DELETE /api/proxies - Remove TODOS os proxies da biblioteca de uma vez.
+//
+// As instâncias que usavam um proxy seguem a funcionar: o endereço e as
+// credenciais ficam guardados na própria linha da instância. O que se perde é a
+// ligação à biblioteca — o cartão deixa de mostrar a geo do proxy.
+router.delete('/', async (req, res, next) => {
+  try {
+    const result = proxiesService.removeAll();
+    res.json({
+      message: result.removed
+        ? `${result.removed} proxy(es) removido(s) da biblioteca`
+        : 'A biblioteca já estava vazia',
+      ...result
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/proxies/:id - Remove um proxy
 router.delete('/:id', async (req, res, next) => {
   try {

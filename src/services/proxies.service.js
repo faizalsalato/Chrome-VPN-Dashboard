@@ -161,6 +161,29 @@ class ProxiesService {
   }
 
   /**
+   * Remove TODOS os proxies da biblioteca de uma vez.
+   *
+   * As instâncias continuam a funcionar: cada uma guarda o endereço e as
+   * credenciais na própria linha (`proxy_host`, `proxy_port`, `proxy_user`…), e
+   * o que se perde é só a ligação à biblioteca (`proxy_id`) — sem ela o cartão
+   * deixa de mostrar a geo do proxy e volta à geo do perfil.
+   *
+   * @returns {{removed:number}} quantos proxies saíram
+   */
+  removeAll() {
+    const db = getDb();
+    const total = db.prepare('SELECT COUNT(*) AS total FROM proxies').get().total || 0;
+
+    const limpar = db.transaction(() => {
+      db.prepare('DELETE FROM proxies').run();
+      db.prepare('UPDATE instances SET proxy_id = NULL').run();
+    });
+    limpar();
+
+    return { removed: total };
+  }
+
+  /**
    * Importa uma lista de proxies de uma vez.
    * Aceita itens já parseados: { host, port, user, pass, scheme?, name? }.
    * Ignora duplicatas (mesmo host+porta+usuário). Não sobrescreve existentes.
