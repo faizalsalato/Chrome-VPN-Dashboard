@@ -49,4 +49,26 @@ describe('contexto de build da imagem do navegador', () => {
     expect(achado).not.toBeNull();
     expect(Number(achado[1])).toBe(cloakbrowser.AUDIO_PORT_NUMBER);
   });
+
+  it('põe a tela num ritmo de link com latência (FrameRate e qualidade dinâmica)', () => {
+    const dockerfile = fs.readFileSync(DOCKERFILE, 'utf-8');
+    const linha = dockerfile.split(/\r?\n/).find((l) => l.includes('Xvnc :99')) || '';
+
+    // O padrão do KasmVNC é de rede local: 60 quadros/s com qualidade 7–8. Num
+    // link com ~200 ms de ida e volta isso enfileira e a tela "trava". O teto
+    // desce e a faixa de qualidade fica ajustável pelo .env (KASM_*).
+    expect(linha).toContain('-FrameRate="${KASM_FRAME_RATE:-25}"');
+    expect(linha).toContain('-DynamicQualityMin="${KASM_QUALITY_MIN:-3}"');
+    expect(linha).toContain('-DynamicQualityMax="${KASM_QUALITY_MAX:-6}"');
+    expect(linha).toContain('-CompareFB=1');
+    expect(linha).toContain('-WebpVideoQuality="${KASM_VIDEO_QUALITY:-5}"');
+  });
+
+  it('a ponte de áudio não ocupa a banda com silêncio', () => {
+    const ponte = fs.readFileSync(path.join(DIR, 'audio-bridge.py'), 'utf-8');
+
+    // O fluxo fica aberto enquanto o som está ligado; sem o descarte de blocos
+    // só de zero, é banda constante disputando com a tela.
+    expect(ponte).toContain("not chunk.strip(b'\\x00')");
+  });
 });

@@ -106,6 +106,13 @@ class AudioHandler(BaseHTTPRequestHandler):
                 chunk = process.stdout.read(block)
                 if not chunk:
                     break
+                # Silêncio puro não vai para o fio: o cliente completa o buffer
+                # com zero do mesmo jeito e a banda fica livre para a TELA, que
+                # é o que trava num link com latência alta. `.strip(b'\x00')`
+                # devolve vazio justamente quando o bloco é só zero (custo em C,
+                # desprezível frente ao próprio `parec`).
+                if not chunk.strip(b'\x00'):
+                    continue
                 self.wfile.write(chunk)
         except (BrokenPipeError, ConnectionResetError):
             # Cliente fechou a aba (ou desligou o botão): é o fim normal.

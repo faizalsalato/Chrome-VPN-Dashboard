@@ -116,6 +116,10 @@ node src/server.js
 | `KASM_PORT` | `9225` | Porta do cliente web do KasmVNC **dentro** do container (loopback; quem publica é o roteador) |
 | `AUDIO_RATE` | `24000` | Taxa do PCM que vai para o cliente web (24000 × 1 canal ≈ 48 kB/s) |
 | `AUDIO_CHANNELS` | `1` | Canais do áudio do container (2 dobra o tráfego) |
+| `KASM_FRAME_RATE` | `25` | Teto de quadros/s por cliente na tela (o padrão do KasmVNC é 60) |
+| `KASM_QUALITY_MIN` | `3` | Qualidade mínima que o encoder da tela aceita descer sob rede ruim |
+| `KASM_QUALITY_MAX` | `6` | Qualidade máxima da tela (o padrão do KasmVNC é 8 — quase sem perdas, pesa muito) |
+| `KASM_VIDEO_QUALITY` | `5` | Qualidade no modo vídeo (scroll/vídeo, onde o olho perdoa mais que no texto) |
 | `MAX_UPLOAD_BYTES` | `0` | Teto por ficheiro no envio para o perfil (0 = sem teto; o limite é o disco) |
 
 ## Modos de Conexão
@@ -471,6 +475,36 @@ Ajustes por ambiente (no container), para quando o link é apertado:
 | `AUDIO_RATE` | `24000` | taxa do PCM em Hz (24000 × 1 canal ≈ 48 kB/s) |
 | `AUDIO_CHANNELS` | `1` | canais de som (2 dobra o tráfego) |
 | `AUDIO_PORT` | `9226` | porta da ponte no loopback (o dashboard passa a mesma em `--audio`) |
+
+### Tela lenta? (ritmo e qualidade do KasmVNC)
+
+Se a tela "trava" e o mouse parece atrasado, quase sempre é **latência**, não
+banda: o servidor fica num continente e o navegador noutro (Brasil → Europa, por
+exemplo, são ~200 ms de ida e volta). O KasmVNC sai de fábrica pensado para rede
+local — **60 quadros/s** com qualidade dinâmica entre **7 e 8** — e nesse cenário
+cada quadro cheio passa de centenas de kB, o encoder WebP (no CPU do servidor)
+vira gargalo e os quadros **enfileiram**: o atraso cresce sem parar, mesmo com
+banda sobrando. Três coisas atacam isso:
+
+1. **`TCP_NODELAY` na ponte do roteador** (`src/browser/port-router.py`). O
+   KasmVNC manda cada atualização em pedaços (cabeçalho do WebSocket + payload);
+   sem a opção, o **Nagle** segura o pedaço final (menor que um segmento) até o
+   ACK do anterior — ~1 RTT **por quadro** (~200 ms no exemplo acima). Agora a
+   ponte liga a opção no socket de escuta (herdada pelos aceitos) e nos dois
+   lados de cada conexão;
+2. **ritmo e qualidade da tela** (linha do `Xvnc` no Dockerfile): `-FrameRate`
+   teto de **25** quadros/s, `-DynamicQualityMin/Max` **3–6** e `-CompareFB=1`
+   (compara o framebuffer sempre: manda só o que mudou). Ajustável sem
+   reconstruir a imagem pelas variáveis `KASM_FRAME_RATE`, `KASM_QUALITY_MIN`,
+   `KASM_QUALITY_MAX` e `KASM_VIDEO_QUALITY` (tabela acima);
+3. **silêncio não ocupa a banda**: com o som ligado o fluxo PCM fica aberto; a
+   ponte (`audio-bridge.py`) agora **descarta blocos só de zero**, e o cliente
+   preenche com silêncio do mesmo jeito.
+
+> **Link bom (fibra, perto do servidor)?** Suba para `KASM_FRAME_RATE=30`,
+> `KASM_QUALITY_MIN=5`, `KASM_QUALITY_MAX=8`. **Link ruim?** Desça para
+> `20`, `2`, `5`. A mudança vale no próximo start do container da instância
+> (o valor entra no ambiente, e o container é recriado para pegá-lo).
 
 > **Mudou o Dockerfile? A imagem se reconstrói sozinha.** A imagem derivada
 > guarda a etiqueta `dashboard.recipe` com a impressão do Dockerfile e dos

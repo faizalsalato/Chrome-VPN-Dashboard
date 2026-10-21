@@ -370,6 +370,19 @@ describe('roteador da porta publicada', () => {
     expect(programa).toContain('/audio');
     expect(programa).toContain('--audio');
   });
+
+  it('liga TCP_NODELAY na ponte (o Nagle custava ~1 RTT por quadro da tela)', () => {
+    const programa = cloakbrowser.routerProgram();
+
+    // O KasmVNC manda cada atualização em pedaços (cabeçalho do WebSocket +
+    // payload). Sem NODELAY o pedaço final, menor que um segmento, espera o
+    // ACK do anterior — num link com 200 ms de ida e volta é ~200 ms POR
+    // QUADRO, com banda sobrando. A ponte tem de ligar a opção nos dois lados.
+    expect(programa).toContain('TCP_NODELAY');
+    expect(programa).toContain('def _no_delay');
+    expect(programa).toContain('_no_delay(client)');
+    expect(programa).toContain('_no_delay(upstream)');
+  });
 });
 
 describe('volume do perfil', () => {
@@ -420,6 +433,27 @@ describe('ambiente do container', () => {
       else process.env.AUDIO_RATE = anterior.rate;
       if (anterior.channels === undefined) delete process.env.AUDIO_CHANNELS;
       else process.env.AUDIO_CHANNELS = anterior.channels;
+    }
+  });
+
+  it('passa a qualidade/ritmo da tela (KASM_*) para o container', () => {
+    // O Xvnc os lê na linha do entrypoint, no start do container: sem o
+    // repasse, mexer no .env não mudaria nada na tela.
+    const nomes = ['KASM_FRAME_RATE', 'KASM_QUALITY_MIN', 'KASM_QUALITY_MAX', 'KASM_VIDEO_QUALITY'];
+    const anterior = {};
+    for (const nome of nomes) {
+      anterior[nome] = process.env[nome];
+      process.env[nome] = '30';
+    }
+
+    try {
+      const env = cloakbrowser.containerEnv({ fingerprint: FINGERPRINT });
+      for (const nome of nomes) expect(env).toContain(`${nome}=30`);
+    } finally {
+      for (const nome of nomes) {
+        if (anterior[nome] === undefined) delete process.env[nome];
+        else process.env[nome] = anterior[nome];
+      }
     }
   });
 });

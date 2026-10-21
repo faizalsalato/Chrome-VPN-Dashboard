@@ -125,7 +125,14 @@ const PASSTHROUGH_ENV = [
   // que sai o ambiente do container — sem isto, a variável posta no dashboard
   // não chegaria ao `audio-start.sh`.
   'AUDIO_RATE',
-  'AUDIO_CHANNELS'
+  'AUDIO_CHANNELS',
+  // Qualidade/ritmo da tela (KasmVNC). O padrão da imagem já é o de link com
+  // latência alta (25 quadros/s, qualidade 3–6); quem tem link melhor sobe
+  // estes valores no .env sem precisar reconstruir a imagem.
+  'KASM_FRAME_RATE',
+  'KASM_QUALITY_MIN',
+  'KASM_QUALITY_MAX',
+  'KASM_VIDEO_QUALITY'
 ];
 // Campos do fingerprint que viram `--fingerprint-<nome>=<valor>`.
 // O `cloakserve` faz exatamente este mapeamento nas conexões CDP; aqui as

@@ -66,8 +66,25 @@ RUN cat /usr/local/share/pulse-virtual.pa >> /etc/pulse/system.pa \
 # Xvfb -> Xvnc (KasmVNC), com a geometria e a porta do cliente web vindas do
 # ambiente. O `&` final (servidor em background) é literal no entrypoint — no
 # sed ele precisa de escape, tanto ele quanto o do `2>&1`.
+#
+# Os parâmetros de codificação abaixo são o que separa uma tela usável de uma
+# tela travada num link com latência alta (Brasil -> servidor na Europa, por
+# exemplo). O padrão do KasmVNC é pensado para rede local: 60 quadros/s com
+# qualidade dinâmica entre 7 e 8 — cada quadro cheio passa de centenas de kB, o
+# encoder WebP (no CPU do servidor) vira o gargalo e a tela enfileira, com o
+# atraso crescendo sem parar. Aqui:
+#   -FrameRate               25   teto de quadros por cliente (metade do padrão);
+#   -DynamicQualityMin/Max 3/6    faixa da qualidade dinâmica (o padrão 7/8
+#                                 nunca descia);
+#   -CompareFB                1   compara o framebuffer sempre: manda só o que
+#                                 mudou, em vez de deixar o modo automático;
+#   -Webp/JpegVideoQuality    5   qualidade no modo vídeo (scroll/vídeo, onde o
+#                                 olho perdoa mais que no texto).
+# Continuam ajustáveis sem reconstruir a imagem: as variáveis KASM_* vêm do
+# .env do dashboard (ver PASSTHROUGH_ENV no cloakbrowser.service).
+
 RUN sed -i \
-      's#Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &.*#Xvnc :99 -websocketPort "${KASM_PORT:-9225}" -rfbport -1 -geometry "${SCREEN_WIDTH:-1366}x${SCREEN_HEIGHT:-768}" -depth 24 -SecurityTypes None -DisableBasicAuth -interface 127.0.0.1 -publicIP 127.0.0.1 -AlwaysShared -httpd /usr/share/kasmvnc/www >/tmp/xvnc.log 2>\&1 \&#' \
+      's#Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &.*#Xvnc :99 -websocketPort "${KASM_PORT:-9225}" -rfbport -1 -geometry "${SCREEN_WIDTH:-1366}x${SCREEN_HEIGHT:-768}" -depth 24 -SecurityTypes None -DisableBasicAuth -interface 127.0.0.1 -publicIP 127.0.0.1 -AlwaysShared -FrameRate="${KASM_FRAME_RATE:-25}" -DynamicQualityMin="${KASM_QUALITY_MIN:-3}" -DynamicQualityMax="${KASM_QUALITY_MAX:-6}" -CompareFB=1 -WebpVideoQuality="${KASM_VIDEO_QUALITY:-5}" -JpegVideoQuality="${KASM_VIDEO_QUALITY:-5}" -httpd /usr/share/kasmvnc/www >/tmp/xvnc.log 2>\&1 \&#' \
       /entrypoint.sh \
  && grep -q 'Xvnc :99' /entrypoint.sh \
  && ! grep -q '^Xvfb ' /entrypoint.sh

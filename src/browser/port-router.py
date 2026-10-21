@@ -50,6 +50,23 @@ AUDIO_PATH_PREFIXES = ('/audio',)
 HTTP_METHODS = (b'GET ', b'POST ', b'HEAD ', b'PUT ', b'OPTIONS ', b'DELETE ', b'PATCH ')
 
 
+def _no_delay(sock: socket.socket) -> None:
+    """Liga TCP_NODELAY no socket.
+
+    Por que isto importa tanto: sem ele o Nagle segura um pedaço pequeno até o
+    ACK do anterior. O KasmVNC manda cada atualização de tela em pedaços
+    (cabeçalho do WebSocket + payload) e o último pedaço de cada quadro costuma
+    ser menor que um segmento — ou seja, ele ficava esperando um RTT inteiro
+    antes de sair. Num link com 200 ms de ida e volta isso é ~200 ms de atraso
+    POR QUADRO: a tela parece travada mesmo com banda sobrando.
+    """
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        # SO que não conhece a opção: segue sem ela (pior, mas funciona).
+        pass
+
+
 def _pump(source: socket.socket, destination: socket.socket) -> None:
     """Copia bytes de `source` para `destination` até o fim da conexão."""
     try:
@@ -132,6 +149,10 @@ def _bridge(
 
     upstream.settimeout(None)
     client.settimeout(None)
+    # Os dois lados da ponte: o cliente (a tela chegando do nginx) e o upstream
+    # (o KasmVNC no loopback). Ver `_no_delay`.
+    _no_delay(client)
+    _no_delay(upstream)
 
     # O que já foi lido (a linha de requisição) tem de chegar ao destino antes
     # do resto: sem isso o upstream esperaria uma requisição que já passou.
@@ -159,6 +180,9 @@ def serve(listen_port: int, cdp_port: int, screen_port: int, audio_port: int) ->
     """Aceita conexões em 0.0.0.0:<listen_port> e as repassa por caminho."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # No Linux as opções do socket de escuta são herdadas pelos aceitos — assim
+    # toda conexão já nasce com NODELAY, mesmo antes de `_bridge` rodar.
+    _no_delay(server)
     server.bind(('0.0.0.0', listen_port))
     server.listen(BACKLOG)
     print(
