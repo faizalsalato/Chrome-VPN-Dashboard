@@ -92,6 +92,13 @@ class ChromeContainerService {
     if (config.mitmPort) {
       return `http://host.docker.internal:${config.mitmPort}`;
     }
+    // SOCKS5 autenticado: o Chrome aponta para o NOSSO relay, que injeta a
+    // credencial no handshake e resolve o nome pelo resolvedor do pais. Sem
+    // isto o Chrome teria de falar com o upstream, nao saberia a credencial e
+    // o DNS seria o do proxy.
+    if (config.proxy.scheme === 'socks5' && config.relayPort) {
+      return `socks5://host.docker.internal:${config.relayPort}`;
+    }
     if (config.proxy.auth && config.forwarderPort) {
       return `http://host.docker.internal:${config.forwarderPort}`;
     }

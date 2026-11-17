@@ -62,4 +62,20 @@ it('MITM desligado por default nao poe mitmPort no chromeConfig', async () => {
   }
 });
 
+// Chromium com SOCKS5: o Chrome nao tem resolucao local (documentado no
+// proprio Chromium: name resolution is always done proxy side). Quem resolve
+// e o NOSSO relay, pelo resolvedor do pais, e o Chrome aponta para ele.
+it('SOCKS5 no Chromium aponta para o relay e ativa DNS do pais', async () => {
+  const cc = await dockerService.chromeConfig({
+    id: 9, port: 4009, type: 'proxy', browser: 'chromium',
+    proxy: { host: '65.111.20.169', port: 1080, scheme: 'socks5', auth: true, user: 'u', pass: 'p' },
+    fingerprint: { geo: { countryCode: 'BR' } }
+  });
+  expect(cc.dnsLocal).toBe(true);
+  expect(cc.relayPort).toBeGreaterThan(0);
+  expect(cc.dnsResolver).toEqual({ name: 'br-01', ip: '172.17.0.3', country: 'BR' });
+  const chromeContainer = require('../src/services/chrome-container.service');
+  expect(chromeContainer.proxyServerFor(cc)).toBe(`socks5://host.docker.internal:${cc.relayPort}`);
+});
+
 });

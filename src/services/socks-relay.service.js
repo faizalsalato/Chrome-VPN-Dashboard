@@ -117,6 +117,28 @@ class SocksRelayService {
     };
   }
 
+  /**
+   * Resolve um nome usando o resolvedor do pais (ex.: br-01 em 172.17.0.3).
+   * Usa dns.resolve4 com `servers` para forcar o servidor, em vez do
+   * /etc/resolv.conf do host. Falha suave: se o resolvedor nao responder,
+   * devolve null e o relay repassa o nome ao proxy (comportamento antigo).
+   */
+  _resolveVia(name, dnsServer) {
+    return new Promise((resolve) => {
+      try {
+        const dns = require('dns');
+        const r = new dns.Resolver();
+        r.setServers([dnsServer]);
+        r.setTimeout(2500);
+        r.resolve4(name, (err, addresses) => {
+          resolve(!err && addresses && addresses.length ? addresses[0] : null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
   _createRelay(port, upstream) {
     return new Promise((resolve, reject) => {
       const server = net.createServer((client) => {
@@ -164,6 +186,23 @@ class SocksRelayService {
       const portBuf = await cr.need(2);
       if (cmd !== 1) throw new Error('só CONNECT é suportado');
 
+      // Resolucao LOCAL do nome. O Chromium, com SOCKS5, entrega SEMPRE o nome
+      // ao proxy — esta documentado no proprio Chromium ("name resolution is
+      // always done proxy side"), e ao contrario do Firefox nao ha opcao de
+      // resolver no cliente. Se repassarmos o nome, quem resolve e o proxy e o
+      // whoer ve o DNS do proxy (Canada, no proxy BR), mesmo com IP brasileiro.
+      // Resolvendo aqui pelo resolvedor do pais, o CONNECT leva ja o IP certo e
+      // o DNS deixa de ser o do proxy. Medido: br-01 resolve com egress
+      // brasileiro (104.23.255.5 -> Sao Paulo); o resolver do host da Alemanha.
+      let destAddr = rawAddr;
+      if (atyp === 3 && upstream.dnsServer) {
+        const name = rawAddr.subarray(2).toString('ascii');
+        const ip = await this._resolveVia(name, upstream.dnsServer);
+        if (ip) {
+          destAddr = Buffer.concat([Buffer.from([1]), Buffer.from(ip.split('.').map(Number))]);
+        }
+      }
+
       // 3. Handshake com o upstream, com credencial.
       up = net.connect(upstream.port, upstream.host);
       up.on('error', () => {});
@@ -179,8 +218,9 @@ class SocksRelayService {
       const ar = await ur.need(2);
       if (ar[1] !== 0) throw new Error('upstream recusou a credencial');
 
-      // 4. CONNECT ao upstream com o MESMO destino pedido pelo cliente.
-      up.write(Buffer.concat([Buffer.from([5, 1, 0]), rawAddr, portBuf]));
+      // 4. CONNECT ao upstream com o destino resolvido localmente (ou o nome,
+      // se nao houver resolvedor configurado — comportamento antigo).
+      up.write(Buffer.concat([Buffer.from([5, 1, 0]), destAddr, portBuf]));
       const rep = await ur.need(4);
       if (rep[1] !== 0) throw new Error(`upstream recusou o destino (código ${rep[1]})`);
       if (rep[3] === 1) await ur.need(4);

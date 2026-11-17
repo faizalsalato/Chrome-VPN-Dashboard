@@ -63,7 +63,11 @@ class DockerService {
       // CONNECT; para o resolver do país ter efeito é preciso pedir ao Firefox
       // que resolva localmente (UseProxyForDNS: true na policy). Em ambos os
       // casos o resolvedor do container é que decide o DNS visto pelo whoer.
-      dnsLocal: browser === 'firefox' && !!proxy,
+      // Firefox: resolve localmente (UseProxyForDNS). Chromium: o SOCKS5
+      // normalmente resolve no proxy, mas o NOSSO relay resolve pelo pais antes
+      // do CONNECT, entao tambem conta como resolucao local. Chromium+HTTP
+      // continua sem (o nome vai no CONNECT e o relay nao existe).
+      dnsLocal: !!proxy && (browser === 'firefox' || proxy.scheme === 'socks5'),
       // MITM: quando o perfil tem fingerprint, o tráfego HTTPS passa por um
       // proxy local que reescreve User-Agent e Sec-CH-UA* — sem isto o servidor
       // de destino vê o binário Linux mesmo com a página dizendo macOS.
@@ -558,7 +562,11 @@ class DockerService {
           host: proxy.host,
           port: proxy.port,
           user: proxy.user,
-          pass: proxy.pass
+          pass: proxy.pass,
+          // O relay resolve o nome pelo resolvedor do pais antes de mandar o
+          // CONNECT ao proxy. Sem isto o Chromium entrega o nome ao proxy e o
+          // whoer ve o DNS do proxy (Canada), mesmo com IP brasileiro.
+          dnsServer: config.dnsResolver && config.dnsResolver.ip ? config.dnsResolver.ip : null
         });
         console.log(`[INFO] [socks-relay] Relay SOCKS5 ativo para chrome${id}`);
       } catch (err) {
