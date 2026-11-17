@@ -241,6 +241,9 @@ const Instances = {
     if (browser === 'cloakbrowser') {
       return `<span class="type-badge cloakbrowser" title="Navegador: CloakBrowser (antidetect)">Cloak</span>`;
     }
+    if (browser === 'firefox') {
+      return `<span class="type-badge firefox" title="Navegador: Firefox">Fire</span>`;
+    }
     return `<span class="type-badge chromium" title="Navegador: Chromium">Chro</span>`;
   },
 

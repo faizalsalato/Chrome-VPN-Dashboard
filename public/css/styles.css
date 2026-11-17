@@ -549,6 +549,11 @@ a:hover {
   border-color: #4da2ff;
 }
 
+.type-badge.firefox {
+  color: #ff7139;
+  border-color: #ff7139;
+}
+
 /* Badges de provedor VPN */
 .type-badge.expressvpn {
   color: #d63031;

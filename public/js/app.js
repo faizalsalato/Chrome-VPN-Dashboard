@@ -279,7 +279,10 @@ const App = {
     const type = typeEl ? typeEl.value : 'vpn';
     const browserEl = document.getElementById('instance-browser');
     // Só os navegadores conhecidos passam; qualquer outro valor cai no Chromium.
-    const browser = browserEl && ['brave', 'cloakbrowser'].includes(browserEl.value)
+    // `firefox` tem de estar na lista: sem ele, selecionar Firefox no formulario
+    // criava silenciosamente uma instancia Chromium (era o sintoma "clico no
+    // Firefox e aparece o Chrome").
+    const browser = browserEl && ['brave', 'cloakbrowser', 'firefox', 'chromium'].includes(browserEl.value)
       ? browserEl.value
       : 'chromium';
     // Versão do CloakBrowser (só quando é ele o navegador escolhido).
