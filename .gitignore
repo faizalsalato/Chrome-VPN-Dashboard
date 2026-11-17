@@ -70,6 +70,9 @@ health-final.sh
 # Scripts de diagnostico da investigacao de DNS/TLS/browser (scratch)
 add-*-test.js
 cdp-find.sh
+apply-turnstile-fix.sh
+final-check.sh
+final-cleanup.sh
 cdp_*.py
 cdp-*.sh
 check-browsers.sh
