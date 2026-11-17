@@ -212,10 +212,12 @@ describe('content.js — User-Agent Client Hints', () => {
 
   it('as marcas trazem a versão major da própria UA', () => {
     const context = loadContentScript(MAC);
+    // Ordem e conteudo iguais ao cabecalho que o binario manda de verdade:
+    // `sec-ch-ua: "Not A(Brand";v="99", "Chromium";v="154"`. Anunciar
+    // "Google Chrome" aqui poria a extensao a contradizer o proprio cabecalho.
     expect(evaluate(context, 'JSON.stringify(navigator.userAgentData.brands)')).toBe(JSON.stringify([
-      { brand: 'Chromium', version: '154' },
-      { brand: 'Google Chrome', version: '154' },
-      { brand: 'Not/A)Brand', version: '24' }
+      { brand: 'Not A(Brand', version: '99' },
+      { brand: 'Chromium', version: '154' }
     ]));
   });
 
@@ -236,7 +238,8 @@ describe('content.js — User-Agent Client Hints', () => {
     expect(valores.platformVersion).toBe('15.0.0');
     expect(valores.architecture).toBe('x86');
     expect(valores.bitness).toBe('64');
-    expect(valores.fullVersionList[0].version).toBe('154.0.8037.92');
+    // A lista comeca pela marca GREASE; o build completo e o da marca Chromium.
+    expect(valores.fullVersionList.map((b) => b.version)).toContain('154.0.8037.92');
   });
 
   it('sem clientHints deduz plataforma e versão do próprio perfil', async () => {

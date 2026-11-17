@@ -17,9 +17,15 @@ const cloakbrowser = require('./cloakbrowser.service');
 
 const CHROME_IMAGE = 'lscr.io/linuxserver/chromium:latest';
 const BRAVE_IMAGE = 'lscr.io/linuxserver/brave:latest';
+// Firefox: imagem oficial da LinuxServer. NAO tem derivada (nao ha patch de
+// wrapper a fazer nela) e NAO le CHROME_CLI: o binario e lancado por script de
+// autostart e a configuracao entra por policies.json.
+const FIREFOX_IMAGE = 'lscr.io/linuxserver/firefox:latest';
 // Valor de referência, usado só quando não dá para perguntar ao Docker.
 const FALLBACK_CHROME_MAJOR = 154;
 const FALLBACK_BRAVE_MAJOR = 154;
+// Medido na imagem: firefox --version responde Mozilla Firefox 160.0.
+const FALLBACK_FIREFOX_MAJOR = 160;
 // Formato completo que os Client Hints anunciam (uaFullVersion).
 const FALLBACK_SUFFIX = '.0.0.0';
 // Versão de navegador plausível: abaixo disso é lixo de saída de comando.
@@ -27,17 +33,25 @@ const MIN_PLAUSIBLE_MAJOR = 50;
 const DETECT_TIMEOUT_MS = 20000;
 const VERSION_PROBE =
   'chromium --version 2>/dev/null || brave --version 2>/dev/null || brave-browser --version 2>/dev/null';
+// O Firefox responde ao proprio binario. Medido na imagem: a saida e
+// "Mozilla Firefox 160.0" (e o sandbox reclama de user namespace antes, por
+// isso o 2>/dev/null). Sem esta sonda o Firefox caia no fallback e a pagina
+// mostrava 160.0.0.0 como se fosse medido.
+const FIREFOX_VERSION_PROBE = 'firefox --version 2>/dev/null';
 
 const cache = new Map();
 
 function imageFor(browser) {
   if (browser === 'brave') return BRAVE_IMAGE;
+  if (browser === 'firefox') return FIREFOX_IMAGE;
   if (cloakbrowser.isCloakBrowser(browser)) return cloakbrowser.image();
   return CHROME_IMAGE;
 }
 
 function fallbackFor(browser) {
-  return browser === 'brave' ? FALLBACK_BRAVE_MAJOR : FALLBACK_CHROME_MAJOR;
+  if (browser === 'brave') return FALLBACK_BRAVE_MAJOR;
+  if (browser === 'firefox') return FALLBACK_FIREFOX_MAJOR;
+  return FALLBACK_CHROME_MAJOR;
 }
 
 /** Versão completa de referência quando o Docker não responde. */
@@ -48,7 +62,9 @@ function fallbackVersionFor(browser) {
 
 /** Comando que revela a versão dentro da imagem do navegador. */
 function probeFor(browser) {
-  return cloakbrowser.isCloakBrowser(browser) ? cloakbrowser.versionProbe() : VERSION_PROBE;
+  if (cloakbrowser.isCloakBrowser(browser)) return cloakbrowser.versionProbe();
+  if (browser === 'firefox') return FIREFOX_VERSION_PROBE;
+  return VERSION_PROBE;
 }
 
 /** Extrai a versão da saída do comando de cada imagem. */
@@ -60,7 +76,8 @@ function parseFor(browser, output) {
 
 /** Extrai "154.0.8037.92" de "Chromium 154.0.8037.92 built on Debian ...". */
 function versionOf(output) {
-  const match = String(output).match(/(\d+\.\d+\.\d+(?:\.\d+)?)/);
+  // 2 a 4 componentes: o Firefox usa "160.0", o Chromium "156.0.8078.79".
+  const match = String(output).match(/(\d+\.\d+(?:\.\d+){0,2})/);
   if (!match) return null;
   const major = parseInt(match[1], 10);
   if (!Number.isFinite(major) || major < MIN_PLAUSIBLE_MAJOR) return null;

@@ -72,10 +72,16 @@
   // O Chrome anuncia aqui a plataforma REAL do sistema e o build REAL do
   // binario, e nao na UA string. Sem esta camada o perfil dizia "MacIntel" na
   // UA e "Linux" nos Client Hints — era o "OS: Linux" que o whoer.net acusava.
-  var CH_PLATFORM_NAMES = { Win32: 'Windows', MacIntel: 'macOS', Linux: 'Linux' };
-  var CH_PLATFORM_VERSIONS = { Windows: '10.0.0', macOS: '15.0.0' };
-  var CH_GREASE_BRAND = 'Not/A)Brand';
-  var CH_GREASE_VERSION = '24';
+  var CH_PLATFORM_NAMES = {
+    Win32: 'Windows', MacIntel: 'macOS', Linux: 'Linux', 'Linux x86_64': 'Linux'
+  };
+  var CH_PLATFORM_VERSIONS = { Windows: '10.0.0', macOS: '15.0.0', Linux: '6.8.0' };
+  // Marcas e GREASE iguais aos do binario, que e Chromium (imagem LinuxServer),
+  // nao Google Chrome. O que o servidor recebe e
+  // `sec-ch-ua: "Not A(Brand";v="99", "Chromium";v="154"`; anunciar
+  // "Google Chrome" aqui seria a extensao a contradizer o proprio cabecalho.
+  var CH_GREASE_BRAND = 'Not A(Brand';
+  var CH_GREASE_VERSION = '99';
 
   var hints = FP.clientHints && typeof FP.clientHints === 'object' ? FP.clientHints : {};
   var uaText = String(FP.userAgent || '');
@@ -92,10 +98,10 @@
   var chPlatformVersion = hints.platformVersion || CH_PLATFORM_VERSIONS[chPlatform] || '10.0.0';
 
   function brandList(version) {
+    // Ordem e conteudo iguais aos do cabecalho real: GREASE, depois Chromium.
     return [
-      { brand: 'Chromium', version: version },
-      { brand: 'Google Chrome', version: version },
-      { brand: CH_GREASE_BRAND, version: CH_GREASE_VERSION }
+      { brand: CH_GREASE_BRAND, version: CH_GREASE_VERSION },
+      { brand: 'Chromium', version: version }
     ];
   }
 
@@ -112,8 +118,8 @@
       // Devolve o conjunto completo: campos a mais sao inofensivos e faltar um
       // campo pedido seria um sinal tao claro quanto o valor errado.
       return Promise.resolve({
-        architecture: 'x86',
-        bitness: '64',
+        architecture: hints.architecture || 'x86',
+        bitness: hints.bitness || '64',
         brands: brandList(chMajor),
         fullVersionList: brandList(chFullVersion),
         mobile: false,

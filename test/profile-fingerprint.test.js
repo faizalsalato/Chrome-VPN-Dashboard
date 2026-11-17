@@ -57,7 +57,7 @@ describe('generate', () => {
     for (const seed of ['chrome1', 'chrome2', 'chrome3', 'chrome4', 'chrome5']) {
       const ua = profileFingerprint.generate(seed, GERMANY).userAgent;
       expect(ua).toMatch(
-        /^Mozilla\/5\.0 \((Windows NT 10\.0; Win64; x64|Macintosh; Intel Mac OS X 10_15_7)\)/
+        /^Mozilla\/5\.0 \((X11; Linux x86_64|Windows NT 10\.0; Win64; x64|Macintosh; Intel Mac OS X 10_15_7)\)/
       );
     }
   });
@@ -149,12 +149,20 @@ describe('personas de desktop', () => {
   // 60 seeds cobrem o espaço determinístico das personas com folga.
   const seeds = Array.from({ length: 60 }, (_, i) => `chrome${i + 1}`);
 
-  it('nunca gera persona Linux (o host é Linux, isso denuncia o container)', () => {
+  // A regra ANTIGA era "nunca gerar persona Linux", com o argumento de que o
+  // host e Linux e isso denuncia o container. A medicao desmentiu: o binario E
+  // Chromium Linux e o processo do navegador gera os cabecalhos Sec-CH-UA* a
+  // partir da plataforma real. Persona Windows/Macintosh mandava UA "Windows"
+  // com `sec-ch-ua-platform: "Linux"` na MESMA requisicao, e o whoer.net
+  // derrubava o score para 80%. Com a persona Linux, tudo diz "Linux" e o score
+  // vai a 100% (medido, sem MITM e sem extensao).
+  it('gera persona Linux, coerente com o binario', () => {
     for (const seed of seeds) {
       const fingerprint = profileFingerprint.generate(seed, GERMANY);
-      expect(['Win32', 'MacIntel']).toContain(fingerprint.platform);
-      expect(fingerprint.userAgent).not.toContain('Linux');
-      expect(fingerprint.userAgent).not.toContain('X11');
+      expect(fingerprint.platform).toBe('Linux x86_64');
+      expect(fingerprint.userAgent).toContain('X11; Linux x86_64');
+      // A UA e o Client Hint nao podem discordar entre si.
+      expect(fingerprint.clientHints.platform).toBe('Linux');
     }
   });
 
@@ -184,7 +192,7 @@ describe('personas de desktop', () => {
 describe('client hints do perfil', () => {
   const chromeVersion = require('../src/services/chrome-version.service');
 
-  const CH_PLATFORM_BY_PLATFORM = { Win32: 'Windows', MacIntel: 'macOS' };
+  const CH_PLATFORM_BY_PLATFORM = { 'Linux x86_64': 'Linux', Win32: 'Windows', MacIntel: 'macOS' };
 
   it('a versão da UA é a versão real do navegador da imagem', () => {
     // Se estas duas discordarem, o Chrome anuncia uma versão na UA e outra nos
@@ -197,12 +205,11 @@ describe('client hints do perfil', () => {
     }
   });
 
-  it('anuncia a plataforma dos Client Hints, nunca o Linux do container', () => {
+  it('anuncia a plataforma dos Client Hints igual a da UA', () => {
     for (const seed of ['chrome1', 'chrome2', 'chrome3', 'chrome4']) {
       const fingerprint = profileFingerprint.generate(seed, GERMANY);
       expect(fingerprint.clientHints.platform)
         .toBe(CH_PLATFORM_BY_PLATFORM[fingerprint.platform]);
-      expect(fingerprint.clientHints.platform).not.toBe('Linux');
     }
   });
 
@@ -245,12 +252,20 @@ describe('alinhamento com a versão real do navegador', () => {
   });
 
   it('preenche os Client Hints que faltavam, seguindo a plataforma da UA', () => {
-    const antigo = legado('chrome2');
+    // Perfil legado de Windows: a UA e a plataforma dizem Windows, e o Client
+    // Hint que faltava tem de ser preenchido com Windows — não com a
+    // plataforma padrao do gerador.
+    const base = profileFingerprint.generate('chrome2', GERMANY);
+    const antigo = Object.assign({}, base, {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      appVersion: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      platform: 'Win32',
+      clientHints: undefined
+    });
     const { fingerprint } = profileFingerprint.sync(antigo, 'chrome2', GERMANY);
 
-    expect(fingerprint.clientHints.platform)
-      .toBe(antigo.platform === 'MacIntel' ? 'macOS' : 'Windows');
-    expect(fingerprint.clientHints.platform).not.toBe('Linux');
+    expect(fingerprint.clientHints.platform).toBe('Windows');
+    expect(fingerprint.clientHints.platformVersion).toBe('10.0.0');
     // A identidade do perfil não é tocada por este ajuste.
     expect(fingerprint.screen).toEqual(antigo.screen);
     expect(fingerprint.webgl).toEqual(antigo.webgl);

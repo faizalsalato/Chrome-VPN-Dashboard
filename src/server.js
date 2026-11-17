@@ -8,6 +8,8 @@ const instancesRouter = require('./routes/instances.router');
 const vpnRouter = require('./routes/vpn.router');
 const proxiesRouter = require('./routes/proxies.router');
 const cloakLicensesRouter = require('./routes/cloak-licenses.router');
+const adminRouter = require('./routes/admin.router');
+const adminAuth = require('./middleware/admin-auth.middleware');
 const proxyInjector = require('./services/proxy-injector.service');
 const instanceService = require('./services/instance.service');
 
@@ -46,6 +48,67 @@ app.get('/', (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// --- Página de administração ------------------------------------------------
+//
+// Fica em src/admin/ (fora de public/) de propósito: o express.static não a
+// alcança, então o HTML nunca é servido sem passar pelo gate do token.
+//
+// Fluxo: /admin/?token=sakarutel -> valida -> grava cookie httpOnly -> redireciona
+// para /admin/ limpo. O token sai da URL no primeiro acesso (não fica em
+// histórico, Referer nem log de proxy).
+const ADMIN_HTML = path.join(__dirname, 'admin', 'index.html');
+
+// O Express, por padrão, trata "/admin/" como igual a "/admin". Sem esta
+// checagem, a rota de redirect abaixo captura "/admin/" também e a página entra
+// em laço. Aqui: só redireciona quando o caminho é EXATAMENTE "/admin".
+app.get('/admin', (req, res, next) => {
+  if (req.path !== '/admin') return next();
+  const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(301, '/admin/' + qs);
+});
+
+app.get('/admin/', (req, res, next) => {
+  const token = req.query.token;
+
+  if (token !== undefined) {
+    if (!adminAuth.tokenMatches(token)) {
+      return res.status(401).type('html').send(
+        '<!DOCTYPE html><meta charset="utf-8"><title>401</title>' +
+        '<div style="font:15px system-ui;max-width:460px;margin:80px auto;color:#e6edf3;background:#0d1117;padding:0">' +
+        '<h1 style="font-size:18px">Token inválido</h1>' +
+        '<p style="color:#8b949e">A página de administração exige o token correto na URL.</p></div>'
+      );
+    }
+
+    // Token válido: grava a sessão e limpa a URL.
+    res.cookie(adminAuth.COOKIE_NAME, adminAuth.cookieValue(), {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      maxAge: adminAuth.COOKIE_MAX_AGE * 1000,
+      path: '/'
+    });
+    return res.redirect(302, '/admin/');
+  }
+
+  if (!adminAuth.hasSession(req)) {
+    return res.status(401).type('html').send(
+      '<!DOCTYPE html><meta charset="utf-8"><title>401</title>' +
+      '<div style="font:15px system-ui;max-width:460px;margin:80px auto;color:#e6edf3;background:#0d1117;padding:0">' +
+      '<h1 style="font-size:18px">Acesso restrito</h1>' +
+      '<p style="color:#8b949e">Abra esta página com <code>?token=…</code> na URL.</p></div>'
+    );
+  }
+
+  fs.readFile(ADMIN_HTML, 'utf-8', (err, html) => {
+    if (err) return next(err);
+    res.type('html').send(html);
+  });
+});
+
+// API da página de administração (autenticação própria por token).
+app.use('/api/admin', adminRouter);
+
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/instances', instancesRouter);
@@ -59,8 +122,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // SPA fallback - serve index.html for non-API routes
+// /admin/ tem rota própria acima: o fallback não pode engoli-la.
 app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api/')) {
+  if (!req.path.startsWith('/api/') && !req.path.startsWith('/admin')) {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
   }
 });

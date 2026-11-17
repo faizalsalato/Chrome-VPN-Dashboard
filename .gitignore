@@ -24,3 +24,37 @@ mitm-proxy/node_modules/
 # Bytecode do Python (as ferramentas do container sao .py)
 __pycache__/
 *.pyc
+
+# Notas e plano da Perch (nao fazem parte do produto)
+.perch/
+
+# Scripts de diagnostico/investigacao deste servidor (scratch, nao versionar)
+backup-server.sh
+check-country.sh
+cleanup-final.sh
+diag-*.sh
+exp-socks.sh
+fix-1440.sh
+fix-lifetime.sh
+ins-testes.js
+inst-br.sh
+map-resolvers*.sh
+prove*.sh
+revive-ff*.sh
+run-relay.sh
+socks-relay.js
+test-brdns*.sh
+test-create-chrome.sh
+test-join-network.sh
+test-proxy-user.sh
+test-server.sh
+test-socks*.sh
+test-which.sh
+verify-chrome-final.sh
+verify-chromium.sh
+wire-brdns.sh
+
+# Backups de edicao (nao versionar)
+*.bak
+*.bak-*
+*.bak.OLD

@@ -23,14 +23,29 @@ const FP_MARKER = '/*__FINGERPRINT__*/ null';
 // Bancos de valores realistas para gerar identidades variadas por perfil.
 // Idioma e fuso NÃO estão aqui: eles vêm da localização da VPN/proxy, para que
 // o perfil nunca contradiga o IP de saída.
-// Apenas desktops reais. Linux fica de fora de propósito: o navegador roda num
-// container Linux headless, então uma persona Linux faria o perfil bater com o
-// sistema real do host — e o whoer.net passaria a acusar "Linux", que é a cara
-// de automação.
+// LINUX ENTRA, e é o padrão. A versão anterior desta lista o excluía de
+// propósito, com o argumento de que "Linux é a cara de automação". A medição
+// desmentiu: o que o verificador acusa não é a plataforma, é a CONTRADIÇÃO.
+//
+// O binário é Chromium Linux, e o processo do navegador gera os cabeçalhos
+// Sec-CH-UA* a partir da plataforma REAL. A extensão reescreve
+// navigator.userAgentData no JS, mas não alcança o que sai no fio: persona
+// Windows num binário Linux manda UA "Windows" com
+// `sec-ch-ua-platform: "Linux"` na MESMA requisição, e o whoer.net derruba o
+// score (80% no teste). Com a persona Linux, UA, navigator.platform,
+// userAgentData e Sec-CH-UA-Platform dizem todos "Linux" — nada a contradizer,
+// e o score vai a 100% (medido, sem MITM e sem extensão).
+//
+// Windows e macOS continuam na lista para quem for rodar num binário daquela
+// plataforma (ou fixar a persona por options.fingerprint).
 const PLATFORMS = [
+  { ua: 'X11; Linux x86_64', platform: 'Linux x86_64', vendor: 'Google Inc.' },
   { ua: 'Windows NT 10.0; Win64; x64', platform: 'Win32', vendor: 'Google Inc.' },
   { ua: 'Macintosh; Intel Mac OS X 10_15_7', platform: 'MacIntel', vendor: 'Apple Computer, Inc.' }
 ];
+// Plataforma padrão do gerador: Linux, porque é o que o binário É. A identidade
+// só é coerente quando o perfil não mente sobre o sistema.
+const DEFAULT_PLATFORM = PLATFORMS[0];
 // Resolução única: a de um notebook comum (1366x768), que é o que o usuário vê
 // na tela — o X do container nasce nesse tamanho, igual ao que o perfil anuncia
 // nas flags `--fingerprint-screen-*`. 1536x864 e 1280x720 ficaram de fora por
@@ -50,18 +65,21 @@ const GPUS = [
 
 // Client Hints derivados da plataforma da UA (navigator.platform).
 const CLIENT_HINT_PLATFORMS = {
-  Win32: { platform: 'Windows', platformVersion: '10.0.0' },
-  MacIntel: { platform: 'macOS', platformVersion: '15.0.0' }
+  'Linux x86_64': { platform: 'Linux', platformVersion: '6.8.0', architecture: 'x86', bitness: '64' },
+  Win32: { platform: 'Windows', platformVersion: '10.0.0', architecture: 'x86', bitness: '64' },
+  MacIntel: { platform: 'macOS', platformVersion: '15.0.0', architecture: 'arm', bitness: '64' }
 };
 
 /** Bloco de Client Hints coerente com a plataforma e a versão informadas. */
 function clientHintsFor(platform, fullVersion) {
-  const known = CLIENT_HINT_PLATFORMS[platform] || CLIENT_HINT_PLATFORMS.Win32;
+  const known = CLIENT_HINT_PLATFORMS[platform] || CLIENT_HINT_PLATFORMS['Linux x86_64'];
   return {
     chromeMajor: parseInt(fullVersion, 10),
     fullVersion,
     platform: known.platform,
-    platformVersion: known.platformVersion
+    platformVersion: known.platformVersion,
+    architecture: known.architecture,
+    bitness: known.bitness
   };
 }
 
@@ -87,7 +105,7 @@ class FingerprintService {
     const rnd = this._mulberry32(this._hash(String(seed)));
     const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 
-    const platformInfo = pick(PLATFORMS);
+    const platformInfo = DEFAULT_PLATFORM;
     const [width, height] = pick(SCREENS);
     const gpu = pick(GPUS);
     // Versão REAL do binário instalado: o Chrome anuncia a própria versão nos

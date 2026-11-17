@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — Chrome VPN Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #2f81f7;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+       margin: 0 0 12px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  .bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    border: 1px solid var(--border); background: var(--panel);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--bad); }
+  .dot.warn { background: var(--warn); }
+
+  button {
+    font: inherit; font-size: 13px; cursor: pointer;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; transition: background .12s, border-color .12s;
+  }
+  button:hover:not(:disabled) { background: #262c36; border-color: #484f58; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #1f6feb; }
+  button.danger { color: var(--bad); border-color: #5a2020; }
+  button.danger:hover:not(:disabled) { background: #2d1517; }
+  button.sm { padding: 3px 8px; font-size: 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .card .v { font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card .v.sm { font-size: 15px; font-family: var(--mono); font-weight: 500; }
+
+  section { margin-bottom: 32px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { background: var(--panel-2); font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #12171e; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .nowrap { white-space: nowrap; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .tag.vpn { background: #1f3a5f; color: #79c0ff; }
+  .tag.proxy { background: #3d2f1f; color: #e3b341; }
+  .tag.running { background: #12351f; color: #56d364; }
+  .tag.stopped { background: #2d2d2d; color: #8b949e; }
+  .tag.error { background: #3d1a1a; color: #ff7b72; }
+
+  .empty { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 50;
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+  }
+  .toast {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px; padding: 10px 14px; font-size: 13px;
+    max-width: 420px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    animation: slide .18s ease-out;
+  }
+  .toast.ok { border-left-color: var(--ok); }
+  .toast.bad { border-left-color: var(--bad); }
+  @keyframes slide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .fp { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .fp b { color: var(--text); font-weight: 500; }
+
+  /* Versoes e CloakBrowser */
+  .vcard {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 18px;
+  }
+  .vcard + .vcard { margin-top: 12px; }
+  .vhead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .vhead .name { font-weight: 600; font-size: 14px; }
+  .vhead .img { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .vrow {
+    display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px;
+    font-size: 13px; padding: 5px 0; border-top: 1px solid #21262d;
+  }
+  .vrow .k { color: var(--muted); font-size: 12px; }
+  .vrow .v { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .badge.ok { background: #12351f; color: #56d364; }
+  .badge.new { background: #3d2f1f; color: #e3b341; }
+  .badge.unknown { background: #2d2d2d; color: #8b949e; }
+  .badge.err { background: #3d1a1a; color: #ff7b72; }
+  .vnote { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .vnote b { color: var(--text); font-weight: 500; }
+  .vactions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Administração</h1>
+  <div class="sub">Chrome VPN Dashboard · controle de instâncias, proxies e estado do servidor</div>
+
+  <div class="bar">
+    <span class="pill"><span class="dot" id="dot-docker"></span><span id="lbl-docker">docker</span></span>
+    <span class="pill"><span class="dot ok"></span>sessão por token</span>
+    <span class="pill" id="pill-updated">—</span>
+    <button id="btn-refresh" class="primary">Atualizar</button>
+    <button id="btn-logout">Sair</button>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="k">Instâncias</div><div class="v" id="m-total">—</div></div>
+    <div class="card"><div class="k">Rodando</div><div class="v" id="m-running">—</div></div>
+    <div class="card"><div class="k">VPN</div><div class="v" id="m-vpn">—</div></div>
+    <div class="card"><div class="k">Proxy</div><div class="v" id="m-proxy">—</div></div>
+    <div class="card"><div class="k">Proxies na biblioteca</div><div class="v" id="m-lib">—</div></div>
+    <div class="card"><div class="k">Uptime</div><div class="v sm" id="m-uptime">—</div></div>
+  </div>
+
+  <section>
+    <h2>Instâncias</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Nome</th><th>Tipo</th><th>Status</th><th>Saída</th>
+            <th>Fuso / Idioma</th><th>Plataforma</th><th>Porta</th><th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tb-instances">
+          <tr><td colspan="9" class="empty">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Biblioteca de proxies</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Nome</th><th>Endereço</th><th>Auth</th><th>Geo</th><th>Testado</th><th>Ações</th></tr>
+        </thead>
+        <tbody id="tb-proxies">
+          <tr><td colspan="7" class="empty">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Versões dos navegadores</h2>
+    <div id="versions-box">
+      <div class="vcard"><div class="vnote">Carregando…</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>CloakBrowser</h2>
+    <div id="cloak-box">
+      <div class="vcard"><div class="vnote">Carregando…</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Servidor</h2>
+    <div class="tablewrap">
+      <table>
+        <tbody id="tb-server">
+          <tr><td colspan="2" class="empty">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- utilidades
+  function el(id) { return document.getElementById(id); }
+
+  function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function toast(msg, kind) {
+    var box = document.createElement('div');
+    box.className = 'toast ' + (kind || '');
+    box.textContent = msg;
+    el('toast').appendChild(box);
+    setTimeout(function () { box.remove(); }, 5000);
+  }
+
+  function fmtUptime(s) {
+    if (s === null || s === undefined) return '—';
+    var d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    if (d) return d + 'd ' + h + 'h';
+    if (h) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+
+  function fmtBytes(b) {
+    if (!b) return '—';
+    var mb = b / 1048576;
+    return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb.toFixed(0) + ' MB';
+  }
+
+  // --------------------------------------------------------------------- API
+  // O token nunca fica no JS: o cookie httpOnly já autentica. Se a sessão cair,
+  // a página recarrega e o servidor pede o token de novo.
+  function api(path, options) {
+    var opts = options || {};
+    var init = {
+      method: opts.method || 'GET',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }
+    };
+    if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+
+    return fetch(path, init).then(function (res) {
+      if (res.status === 401) {
+        document.body.innerHTML =
+          '<div style="max-width:520px;margin:80px auto;font-family:system-ui;color:#e6edf3">' +
+          '<h1 style="font-size:18px">Sessão expirada</h1>' +
+          '<p style="color:#8b949e">Abra a página novamente com o token na URL.</p></div>';
+        throw new Error('não autorizado');
+      }
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ render
+  function renderInstances(instances) {
+    var tb = el('tb-instances');
+    if (!instances.length) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">Nenhuma instância.</td></tr>';
+      return;
+    }
+
+    tb.innerHTML = instances.map(function (i) {
+      var fp = i.fingerprint || {};
+      var geo = fp.geo || {};
+      var exit = geo.ip
+        ? '<span class="mono">' + esc(geo.ip) + '</span><br><span class="muted">' +
+          esc([geo.city, geo.countryCode || geo.country].filter(Boolean).join(', ')) + '</span>'
+        : (i.vpnInfo && i.vpnInfo.publicIP
+            ? '<span class="mono">' + esc(i.vpnInfo.publicIP) + '</span><br><span class="muted">' +
+              esc(i.vpnInfo.country || '') + '</span>'
+            : '<span class="muted">—</span>');
+
+      var status = String(i.status || 'unknown');
+      var statusClass = status === 'running' ? 'running' : (status === 'stopped' ? 'stopped' : 'error');
+
+      return '<tr>' +
+        '<td class="mono">' + esc(i.id) + '</td>' +
+        '<td>' + (i.name ? esc(i.name) : '<span class="muted">—</span>') + '</td>' +
+        '<td><span class="tag ' + esc(i.type) + '">' + esc(i.type) + '</span></td>' +
+        '<td><span class="tag ' + statusClass + '">' + esc(status) + '</span></td>' +
+        '<td>' + exit + '</td>' +
+        '<td class="mono">' + esc(fp.timezone || '—') + '<br><span class="muted">' + esc(fp.language || '—') + '</span></td>' +
+        '<td class="fp"><b>' + esc(fp.platform || '—') + '</b><br>' +
+          (fp.clientHints && fp.clientHints.platform ? 'CH: ' + esc(fp.clientHints.platform) : '') + '</td>' +
+        '<td class="mono">' + esc(i.port || '—') + '</td>' +
+        '<td><div class="actions">' +
+          '<button class="sm" data-act="start" data-id="' + esc(i.id) + '"' +
+            (status === 'running' ? ' disabled' : '') + '>Iniciar</button>' +
+          '<button class="sm" data-act="stop" data-id="' + esc(i.id) + '"' +
+            (status !== 'running' ? ' disabled' : '') + '>Parar</button>' +
+          '<button class="sm" data-act="restart" data-id="' + esc(i.id) + '">Reiniciar</button>' +
+          '<button class="sm danger" data-act="delete" data-id="' + esc(i.id) + '">Remover</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function renderProxies(proxies) {
+    var tb = el('tb-proxies');
+    if (!proxies.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">Biblioteca vazia.</td></tr>';
+      return;
+    }
+
+    tb.innerHTML = proxies.map(function (p) {
+      var geo = [p.city, p.country].filter(Boolean).join(', ');
+      return '<tr>' +
+        '<td class="mono">' + esc(p.id) + '</td>' +
+        '<td>' + (p.name ? esc(p.name) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="mono">' + esc(p.host) + ':' + esc(p.port) + '<br>' +
+          '<span class="muted">' + esc(p.scheme || 'http') + '</span></td>' +
+        '<td>' + (p.auth ? '<span class="tag proxy">sim</span>' : '<span class="muted">não</span>') + '</td>' +
+        '<td>' + (geo ? esc(geo) + (p.geoIp ? '<br><span class="mono muted">' + esc(p.geoIp) + '</span>' : '')
+                     : '<span class="muted">—</span>') + '</td>' +
+        '<td class="mono muted">' + esc(p.testedAt || '—') + '</td>' +
+        '<td><button class="sm" data-ptest="' + esc(p.id) + '">Testar</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function renderServer(s) {
+    var rows = [
+      ['Host', s.host],
+      ['Plataforma', s.platform],
+      ['Node', s.node],
+      ['Hora do servidor', s.time],
+      ['Uptime', fmtUptime(s.uptimeSeconds)],
+      ['RSS', fmtBytes(s.memory && s.memory.rss)],
+      ['Heap usado', fmtBytes(s.memory && s.memory.heapUsed)]
+    ];
+    el('tb-server').innerHTML = rows.map(function (r) {
+      return '<tr><td class="muted nowrap" style="width:200px">' + esc(r[0]) +
+             '</td><td class="mono">' + esc(r[1]) + '</td></tr>';
+    }).join('');
+  }
+
+  // ------------------------------------------------------- versoes e cloak
+  //
+  // Regra de honestidade: quando o dado nao existe, o campo diz "desconhecido"
+  // com o motivo. Nunca "atualizado" por omissao - um digest que nao pode ser
+  // lido nao prova que a imagem esta em dia.
+
+  function badgeUpdate(flag) {
+    if (flag === true) return '<span class="badge new">atualização disponível</span>';
+    if (flag === false) return '<span class="badge ok">em dia</span>';
+    return '<span class="badge unknown">desconhecido</span>';
+  }
+
+  function shortDigest(d) {
+    if (!d) return '—';
+    var s = String(d).replace(/^sha256:/, '');
+    return s.slice(0, 12);
+  }
+
+  function versionCard(title, info) {
+    if (!info) {
+      return '<div class="vcard"><div class="vhead"><span class="name">' + esc(title) +
+             '</span></div><div class="vnote">sem dados</div></div>';
+    }
+
+    var reg = info.registry || {};
+    var up = info.upstream || {};
+    var inst = info.installed || {};
+
+    // "igual ao stable" so faz sentido quando ha versao dos dois lados.
+    var fonte = up.label || 'stable';
+    var behind = '';
+    if (up.majorsBehind === 0) behind = 'igual ao ' + fonte;
+    else if (up.majorsBehind > 0) behind = up.majorsBehind + ' major(s) atrás do ' + fonte;
+    else behind = '—';
+
+    return '<div class="vcard">' +
+      '<div class="vhead">' +
+        '<span class="name">' + esc(title) + '</span>' +
+        '<span class="img">' + esc(info.image || '') + '</span>' +
+        badgeUpdate(reg.updateAvailable) +
+      '</div>' +
+      '<div class="vrow"><span class="k">Instalado</span><span class="v">' +
+        esc(inst.version || '—') + '</span></div>' +
+      '<div class="vrow"><span class="k">' + esc(up.label || 'Stable do Google') + '</span><span class="v">' +
+        esc(up.version || '—') + (up.error ? ' <span class="muted">(' + esc(up.error) + ')</span>' : '') +
+        '</span></div>' +
+      '<div class="vrow"><span class="k">Distância</span><span class="v">' + esc(behind) + '</span></div>' +
+      '<div class="vrow"><span class="k">Digest local</span><span class="v">' +
+        esc(shortDigest(reg.localDigest)) + '</span></div>' +
+      '<div class="vrow"><span class="k">Digest no registry</span><span class="v">' +
+        esc(shortDigest(reg.remoteDigest)) + '</span></div>' +
+      (reg.error ? '<div class="vnote">' + esc(reg.error) + '</div>' : '') +
+      '<div class="vactions">' +
+        '<button data-img="' + esc(info.browser || '') + '">Atualizar imagem</button>' +
+        '<button data-img-recreate="' + esc(info.browser || '') + '">Atualizar e recriar</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderVersions(v, error) {
+    var box = el('versions-box');
+
+    if (!v) {
+      box.innerHTML = '<div class="vcard"><div class="vnote">' +
+        esc(error || 'versões indisponíveis') + '</div></div>';
+      return;
+    }
+
+    box.innerHTML =
+      versionCard('Chromium', v.chromium) +
+      versionCard('Brave', v.brave) +
+      versionCard('Firefox', v.firefox) +
+      '<div class="vactions">' +
+        '<button class="primary" id="btn-check-versions">Verificar agora</button>' +
+        (v.cached ? '<span class="vnote" style="margin:0;align-self:center">' +
+          'em cache (5 min) — "Verificar agora" força a consulta</span>' : '') +
+      '</div>';
+  }
+
+  function renderCloak(c) {
+    var box = el('cloak-box');
+
+    if (!c) {
+      box.innerHTML = '<div class="vcard"><div class="vnote">sem dados do CloakBrowser</div></div>';
+      return;
+    }
+
+    var free = c.free || {};
+    var pro = c.pro || {};
+    var licenses = c.licenses || [];
+
+    var licRows = licenses.length
+      ? licenses.map(function (l) {
+          var seats = (l.seatsActive !== null && l.seatsActive !== undefined)
+            ? l.seatsActive + '/' + (l.seatsLimit === null || l.seatsLimit === undefined ? '?' : l.seatsLimit)
+            : '—';
+          return '<div class="vrow">' +
+            '<span class="k">' + esc(l.masked || ('#' + l.id)) + '</span>' +
+            '<span class="v">' + esc(l.plan || 'plano ?') +
+              ' · prazo ' + esc(l.expires || '?') +
+              ' · lugares ' + esc(seats) +
+              ' · ' + esc(l.instances) + ' instância(s)' +
+              (l.checkedAt ? ' <span class="muted">(verif. ' + esc(l.checkedAt) + ')</span>' : '') +
+            '</span></div>';
+        }).join('')
+      : '<div class="vrow"><span class="k">Licenças</span><span class="v">' +
+        (c.licenseError ? esc(c.licenseError) : 'nenhuma chave na biblioteca') + '</span></div>';
+
+    box.innerHTML =
+      '<div class="vcard">' +
+        '<div class="vhead">' +
+          '<span class="name">Edições</span>' +
+          '<span class="img">' + esc(c.licenseCount) + ' chave(s)</span>' +
+        '</div>' +
+        '<div class="vrow"><span class="k">Free (sem chave)</span><span class="v">' +
+          esc(free.version || '—') + '</span></div>' +
+        '<div class="vrow"><span class="k">Imagem free</span><span class="v">' +
+          esc(free.image || '—') + '</span></div>' +
+        '<div class="vrow"><span class="k">Pro (com chave)</span><span class="v">' +
+          (pro.cachedBinary
+            ? 'binário em cache: ' + esc(pro.cachedBinary)
+            : 'sem binário em cache — usa o da imagem (' + esc(pro.version || '—') + ')') +
+          '</span></div>' +
+        '<div class="vrow"><span class="k">Imagem pro</span><span class="v">' +
+          esc(pro.image || '—') + '</span></div>' +
+        licRows +
+        '<div class="vnote">O binário Pro é baixado do vendor com a chave e vive num volume ' +
+          'partilhado. Atualizar recria as instâncias Pro em execução.</div>' +
+        '<div class="vactions">' +
+          '<button id="btn-cloak-check">Verificar chaves</button>' +
+          '<button class="primary" id="btn-cloak-update">Atualizar binário Pro</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderMetrics(data) {
+    var list = data.instances || [];
+    el('m-total').textContent = list.length;
+    el('m-running').textContent = list.filter(function (i) { return i.status === 'running'; }).length;
+    el('m-vpn').textContent = list.filter(function (i) { return i.type === 'vpn'; }).length;
+    el('m-proxy').textContent = list.filter(function (i) { return i.type === 'proxy'; }).length;
+    el('m-lib').textContent = (data.proxies || []).length;
+    el('m-uptime').textContent = fmtUptime(data.server && data.server.uptimeSeconds);
+
+    var dot = el('dot-docker');
+    var lbl = el('lbl-docker');
+    if (data.dockerConnected) {
+      dot.className = 'dot ok';
+      lbl.textContent = 'docker conectado';
+    } else {
+      dot.className = 'dot bad';
+      lbl.textContent = 'docker fora';
+    }
+
+    el('pill-updated').textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR');
+  }
+
+  // ------------------------------------------------------------------- ações
+  var busy = false;
+
+  function load() {
+    if (busy) return;
+    busy = true;
+    el('btn-refresh').disabled = true;
+
+    api('/api/admin/state').then(function (data) {
+      renderMetrics(data);
+      renderInstances(data.instances || []);
+      renderProxies(data.proxies || []);
+      renderVersions(data.versions, data.versionsError);
+      renderCloak(data.versions && data.versions.cloak);
+      renderServer(data.server || {});
+    }).catch(function (err) {
+      toast('Falha ao carregar: ' + err.message, 'bad');
+    }).then(function () {
+      busy = false;
+      el('btn-refresh').disabled = false;
+    });
+  }
+
+  function act(id, action) {
+    if (action === 'delete') {
+      var ok = window.confirm(
+        'Remover a instância ' + id + '?\n\n' +
+        'Os containers e o perfil (cookies, logins) são apagados. Não há como desfazer.'
+      );
+      if (!ok) return;
+
+      api('/api/admin/instances/' + id, { method: 'DELETE', body: { confirm: true } })
+        .then(function (r) { toast(r.message, 'ok'); load(); })
+        .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+      return;
+    }
+
+    api('/api/admin/instances/' + id + '/' + action, { method: 'POST' })
+      .then(function (r) { toast(r.message, 'ok'); setTimeout(load, 1200); })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  function testProxy(id) {
+    toast('Testando proxy ' + id + '…');
+    api('/api/admin/proxies/' + id + '/test', { method: 'POST' })
+      .then(function (r) {
+        if (r.live) {
+          toast('Proxy ' + id + ': ' + [r.city, r.country].filter(Boolean).join(', ') +
+                (r.ip ? ' (' + r.ip + ')' : ''), 'ok');
+        } else {
+          toast('Proxy ' + id + ' não respondeu' + (r.error ? ': ' + r.error : ''), 'bad');
+        }
+        load();
+      })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  function checkVersions() {
+    toast('Consultando registry e o stable do Google…');
+    api('/api/admin/versions/check', { method: 'POST' })
+      .then(function (r) {
+        var bits = [];
+        if (r.chromium && r.chromium.registry.updateAvailable === true) bits.push('Chromium tem atualização');
+        if (r.chromium && r.chromium.registry.updateAvailable === false) bits.push('Chromium em dia');
+        toast(bits.length ? bits.join(' · ') : 'Versões verificadas', 'ok');
+        load();
+      })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  /**
+   * Atualiza a imagem de um navegador.
+   *
+   * recreate=false: so pull + reconstrucao da derivada. As instancias continuam
+   * a correr com a imagem antiga ate serem reiniciadas.
+   * recreate=true: depois do pull, reinicia as instancias daquele navegador
+   * (derruba sessao aberta) - por isso pede confirmacao.
+   */
+  function updateImage(browser, recreate) {
+    if (!browser) return;
+
+    if (recreate) {
+      var ok = window.confirm(
+        'Atualizar a imagem de ' + browser + ' e RECRIAR as instancias em execucao?\n\n' +
+        'As sessoes abertas nessas instancias caem. O pull pode demorar alguns minutos.'
+      );
+      if (!ok) return;
+    }
+
+    toast('Atualizando a imagem de ' + browser + ' (pull pode demorar)...');
+
+    var path = '/api/admin/images/' + encodeURIComponent(browser) +
+      (recreate ? '/update-and-recreate' : '/update');
+    var body = recreate ? { confirm: true } : {};
+
+    api(path, { method: 'POST', body: body })
+      .then(function (r) {
+        toast(r.message || 'Imagem atualizada', r.changed ? 'ok' : 'ok');
+        load();
+      })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  function cloakCheck() {
+    toast('Verificando as chaves no vendor…');
+    api('/api/admin/cloak/check', { method: 'POST' })
+      .then(function (r) { toast(r.message, 'ok'); load(); })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  function cloakUpdate() {
+    var ok = window.confirm(
+      'Atualizar o binário Pro do CloakBrowser?\n\n' +
+      'Isto baixa o binário mais recente do vendor e RECRIA as instâncias Pro ' +
+      'em execução. As sessões abertas nessas instâncias caem.'
+    );
+    if (!ok) return;
+
+    toast('Baixando o binário Pro (pode demorar)…');
+    api('/api/admin/cloak/update', { method: 'POST', body: { confirm: true } })
+      .then(function (r) { toast(r.message, 'ok'); load(); })
+      .catch(function (e) { toast('Falha: ' + e.message, 'bad'); });
+  }
+
+  // ---------------------------------------------------------------- eventos
+  el('btn-refresh').addEventListener('click', load);
+
+  el('btn-logout').addEventListener('click', function () {
+    document.cookie = 'admin_page=; Path=/; Max-Age=0; SameSite=Strict';
+    window.location.href = '/admin/';
+  });
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || t.tagName !== 'BUTTON') return;
+
+    if (t.dataset.act) act(t.dataset.id, t.dataset.act);
+    else if (t.dataset.ptest) testProxy(t.dataset.ptest);
+    else if (t.dataset.img) updateImage(t.dataset.img, false);
+    else if (t.dataset.imgRecreate) updateImage(t.dataset.imgRecreate, true);
+    else if (t.id === 'btn-check-versions') checkVersions();
+    else if (t.id === 'btn-cloak-check') cloakCheck();
+    else if (t.id === 'btn-cloak-update') cloakUpdate();
+  });
+
+  load();
+  setInterval(load, 15000);
+})();
+</script>
+</body>
+</html>

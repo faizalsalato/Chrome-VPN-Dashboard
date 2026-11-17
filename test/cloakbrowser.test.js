@@ -293,6 +293,32 @@ describe('flags de fingerprint (o que alinha o perfil)', () => {
     expect(line).toContain('--fingerprint-device-memory=16');
   });
 
+  it('o --test-type é opt-in: fica de fora por padrão', () => {
+    // O --test-type marca o browser como "modo de teste", o que serviços de
+    // login e detectores de anti-bot conseguem ver. Só entra quando ligado por
+    // CLOAKBROWSER_TEST_TYPE — o padrão é NÃO ter.
+    const anterior = process.env.CLOAKBROWSER_TEST_TYPE;
+    delete process.env.CLOAKBROWSER_TEST_TYPE;
+    try {
+      expect(cloakbrowser.testType()).toBe(false);
+      expect(commandLine({ type: 'vpn', fingerprint: FINGERPRINT })).not.toContain('--test-type');
+    } finally {
+      if (anterior === undefined) delete process.env.CLOAKBROWSER_TEST_TYPE;
+      else process.env.CLOAKBROWSER_TEST_TYPE = anterior;
+    }
+  });
+
+  it('o --test-type entra quando CLOAKBROWSER_TEST_TYPE está ligado', () => {
+    const anterior = process.env.CLOAKBROWSER_TEST_TYPE;
+    process.env.CLOAKBROWSER_TEST_TYPE = '1';
+    try {
+      expect(cloakbrowser.testType()).toBe(true);
+      expect(commandLine({ type: 'vpn', fingerprint: FINGERPRINT })).toContain('--test-type');
+    } finally {
+      if (anterior === undefined) delete process.env.CLOAKBROWSER_TEST_TYPE;
+      else process.env.CLOAKBROWSER_TEST_TYPE = anterior;
+    }
+  });
   it('mascara o WebRTC com o IP de saída quando ele é conhecido', () => {
     const fingerprint = Object.assign({}, FINGERPRINT, {
       geo: Object.assign({}, FINGERPRINT.geo, { ip: '185.96.133.239' })

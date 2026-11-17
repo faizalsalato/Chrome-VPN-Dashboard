@@ -110,7 +110,11 @@ class ProxiesService {
     if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
       throw Object.assign(new Error('Porta inválida'), { status: 400 });
     }
-    const normalizedScheme = scheme === 'https' ? 'https' : 'http';
+    // `socks5` é um esquema legítimo e não pode ser colapsado em `http`: com
+    // SOCKS5 o navegador resolve nomes localmente, e é isso que permite o DNS
+    // da instância ser o do país dela em vez do resolver do proxy.
+    const normalizedScheme = scheme === 'https' ? 'https'
+      : (scheme === 'socks5' ? 'socks5' : 'http');
     const authFlag = auth ? 1 : 0;
     if (authFlag && (!username || !username.trim())) {
       throw Object.assign(new Error('Proxy autenticado requer usuário'), { status: 400 });

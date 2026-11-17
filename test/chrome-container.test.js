@@ -282,8 +282,11 @@ describe('CloakBrowser (antidetect por CDP)', () => {
     it('normaliza o navegador: desconhecido vira chromium', () => {
       expect(chromeContainer.normalizeBrowser('cloakbrowser')).toBe('cloakbrowser');
       expect(chromeContainer.normalizeBrowser('brave')).toBe('brave');
-      expect(chromeContainer.normalizeBrowser('firefox')).toBe('chromium');
+      // O Firefox passou a ser navegador de primeira classe: nao e mais
+      // "desconhecido que vira chromium".
+      expect(chromeContainer.normalizeBrowser('firefox')).toBe('firefox');
       expect(chromeContainer.normalizeBrowser(undefined)).toBe('chromium');
+      expect(chromeContainer.normalizeBrowser('netscape')).toBe('chromium');
     });
   });
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DockerService
  *
  * Ciclo de vida dos containers das instâncias: criar, iniciar, parar, remover
@@ -10,11 +10,15 @@ const fs = require('fs');
 const Docker = require('dockerode');
 const tar = require('tar-stream');
 const proxyInjector = require('./proxy-injector.service');
+const socksRelay = require('./socks-relay.service');
+const dnsRouting = require('./dns-routing.service');
+const mitmProxy = require('./mitm-proxy.service');
 const fingerprintService = require('./fingerprint.service');
 const chromeContainer = require('./chrome-container.service');
 const gluetunContainer = require('./gluetun-container.service');
 const cloakbrowser = require('./cloakbrowser.service');
 const browserImage = require('./browser-image.service');
+const chromiumImage = require('./chromium-image.service');
 const bookmarks = require('./bookmarks.service');
 const profileFiles = require('./profile-files.service');
 
@@ -33,12 +37,12 @@ class DockerService {
    * O forwarder de proxy autenticado roda no processo do dashboard, então a
    * porta dele é derivada do id da instância.
    */
-  chromeConfig(config) {
+  async chromeConfig(config) {
     const type = normalizeType(config);
     const browser = chromeContainer.normalizeBrowser(config.browser);
     const isCloak = cloakbrowser.isCloakBrowser(browser);
     const proxy = type === 'proxy' ? config.proxy || null : null;
-    return {
+    const result = {
       id: config.id,
       port: config.port,
       type,
@@ -49,6 +53,18 @@ class DockerService {
       // O CloakBrowser aceita usuário:senha na própria URL do proxy; o forwarder
       // só existe porque o Chrome não aceita credenciais na flag.
       forwarderPort: proxy && proxy.auth && !isCloak ? proxyInjector.getPort(config.id) : null,
+      // Relay SOCKS5: só quando o proxy declara esse esquema. Existe porque a
+      // credencial do SOCKS5 vai no handshake, não num cabeçalho, e o forwarder
+      // HTTP não serve. É o que permite ao Firefox resolver nomes localmente.
+      relayPort: proxy && proxy.auth && !isCloak && proxy.scheme === 'socks5'
+        ? socksRelay.getPort(config.id) : null,
+      // Resolução local de nomes: só o Firefox com SOCKS5. É a condição para o
+      // DNS do país ter efeito — com proxy HTTP o nome vai no CONNECT.
+      dnsLocal: browser === 'firefox' && !!proxy && proxy.scheme === 'socks5',
+      // MITM: quando o perfil tem fingerprint, o tráfego HTTPS passa por um
+      // proxy local que reescreve User-Agent e Sec-CH-UA* — sem isto o servidor
+      // de destino vê o binário Linux mesmo com a página dizendo macOS.
+      mitmPort: proxy && !isCloak && config.fingerprint ? mitmProxy.getPort(config.id) : null,
       // Porta interna do navegador (9223 no CloakBrowser: o roteador que serve
       // CDP e tela) — é a que o gluetun publica no modo VPN.
       displayPort: chromeContainer.internalPortFor(browser),
@@ -59,6 +75,22 @@ class DockerService {
       cloakEdition: cloakbrowser.editionOf(config),
       cloakLicenseKey: isCloak ? (config.cloakLicenseKey || null) : null
     };
+
+    // DNS do país no modo proxy. Só com resolução local (SOCKS5/Firefox) faz
+    // sentido: com proxy HTTP o nome vai no CONNECT e o resolvedor local nunca
+    // é consultado. O país vem do fingerprint da instância, que já é alinhado
+    // ao IP de saída. Preparar aqui guarda o IP em cache para que as chamadas
+    // síncronas (buildHostConfig/matchesSpec) sejam determinísticas.
+    if (type === 'proxy' && config.dnsLocal && !isCloak) {
+      const country = (config.fingerprint && (config.fingerprint.country || config.fingerprint.countryCode))
+        || config.proxyCountry || null;
+      if (country) {
+        await dnsRouting.prepare(country);
+        result.dnsResolver = dnsRouting.configFor(country).resolver;
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -93,6 +125,14 @@ class DockerService {
       const base = cloakbrowser.baseImage(edition);
       await this._pullImage(base);
       return browserImage.ensureImage(base);
+    }
+    // Chromium: a imagem oficial e baixada e a DERIVADA e construida a partir
+    // dela (o --test-type sai do wrapper, ver chromium-image.service). Baixar
+    // pelo nome derivado falharia sempre: ela nao esta em registry nenhum.
+    if (browser === 'chromium' || browser === undefined || browser === null) {
+      const base = chromiumImage.baseImage();
+      await this._pullImage(base);
+      return chromiumImage.ensureImage(base);
     }
     return this._pullImage(chromeContainer.imageFor(browser));
   }
@@ -458,6 +498,26 @@ class DockerService {
     // No modo autenticado, sobe o forwarder local agora (antes do start) para
     // que o Chrome já encontre o injetor ativo ao iniciar. O CloakBrowser não
     // precisa dele: as credenciais vão na própria URL do proxy.
+    // MITM: sobe antes do forwarder porque, quando existe, é ELE que o Chrome
+    // usa como proxy — o forwarder simples vira só o caminho de saída dele.
+    // Sem fingerprint não há o que reescrever, e o MITM não sobe.
+    if (!isCloak && config.fingerprint) {
+      try {
+        await mitmProxy.start(id, auth ? {
+          host: proxy.host,
+          port: proxy.port,
+          user: proxy.user,
+          pass: proxy.pass,
+          scheme: proxy.scheme || 'http'
+        } : null, config.fingerprint);
+        console.log(`[INFO] [mitm] Cabeçalhos de identidade reescritos para chrome${id}`);
+      } catch (err) {
+        // Falhar aqui não pode impedir a instância de subir: sem MITM o perfil
+        // continua funcionando, só com os cabeçalhos do binário.
+        console.error(`[ERROR] [mitm] Falha ao iniciar MITM de chrome${id}:`, err.message);
+      }
+    }
+
     if (auth && !isCloak) {
       try {
         await proxyInjector.start(id, {
@@ -472,6 +532,26 @@ class DockerService {
         console.error(`[ERROR] [proxy] Falha ao iniciar forwarder de chrome${id}:`, err.message);
         await chromeContainer.remove(id).catch(() => { /* ignore */ });
         throw Object.assign(new Error('Falha ao preparar proxy autenticado'), { status: 500 });
+      }
+    }
+
+    // Relay SOCKS5: so quando o proxy declara esse esquema. E um caminho
+    // alternativo ao forwarder HTTP, nao encadeado: o Firefox usa um ou outro
+    // conforme a politica. Existe porque a credencial do SOCKS5 vai no
+    // handshake, e o forwarder HTTP (que injeta cabecalho) nao serve.
+    if (auth && !isCloak && proxy.scheme === 'socks5') {
+      try {
+        await socksRelay.start(id, {
+          host: proxy.host,
+          port: proxy.port,
+          user: proxy.user,
+          pass: proxy.pass
+        });
+        console.log(`[INFO] [socks-relay] Relay SOCKS5 ativo para chrome${id}`);
+      } catch (err) {
+        console.error(`[ERROR] [socks-relay] Falha ao iniciar relay de chrome${id}:`, err.message);
+        await chromeContainer.remove(id).catch(() => { /* ignore */ });
+        throw Object.assign(new Error('Falha ao preparar proxy SOCKS5 autenticado'), { status: 500 });
       }
     }
 

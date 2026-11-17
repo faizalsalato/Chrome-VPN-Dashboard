@@ -10,11 +10,17 @@
 const Docker = require('dockerode');
 const localeProfile = require('./locale-profile.service');
 const cloakbrowser = require('./cloakbrowser.service');
+const chromiumImage = require('./chromium-image.service');
+const firefox = require('./firefox.service');
+const dnsRouting = require('./dns-routing.service');
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
-const CHROME_IMAGE = 'lscr.io/linuxserver/chromium:latest';
+// Imagem DERIVADA da LinuxServer: a oficial sem o --test-type no wrapper. O
+// CloakBrowser nao passa por aqui (la o --test-type e opt-in).
+const CHROME_IMAGE = chromiumImage.image();
 const BRAVE_IMAGE = 'lscr.io/linuxserver/brave:latest';
+const FIREFOX_IMAGE = 'lscr.io/linuxserver/firefox:latest';
 // Flags base do Chromium (headless-friendly). Preservadas pelo wrapper do LinuxServer.
 const BASE_CLI = '--no-sandbox --disable-gpu --disable-dev-shm-usage';
 // Caminho da extensão de fingerprint dentro do container (bate com o
@@ -24,8 +30,14 @@ const PUID = '1000';
 const PGID = '1000';
 const DEFAULT_TIMEZONE = 'Etc/UTC';
 // O CloakBrowser sobe KasmVNC (Xvnc) + Chrome: mesmo /dev/shm folgado do Brave.
-const SHM_SIZE = { chromium: 536870912, brave: 1073741824, cloakbrowser: 1073741824 };
-const BROWSERS = ['chromium', 'cloakbrowser'];
+const SHM_SIZE = {
+  chromium: 536870912,
+  brave: 1073741824,
+  cloakbrowser: 1073741824,
+  // O Firefox/Selkies e tao sedento de /dev/shm quanto o Brave.
+  firefox: 1073741824
+};
+const BROWSERS = ['chromium', 'cloakbrowser', 'firefox'];
 // 'brave' saiu das opções (a UI só oferece Chromium e CloakBrowser), mas o
 // suporte fica: uma instância antiga gravada como brave segue a funcionar, em
 // vez de virar Chromium sem avisar.
@@ -46,6 +58,7 @@ function normalizeBrowser(browser) {
 function imageFor(configOrBrowser) {
   const config = typeof configOrBrowser === 'string' ? { browser: configOrBrowser } : (configOrBrowser || {});
   if (config.browser === 'brave') return BRAVE_IMAGE;
+  if (config.browser === 'firefox') return FIREFOX_IMAGE;
   if (cloakbrowser.isCloakBrowser(config.browser)) return cloakbrowser.image(config.cloakEdition);
   return CHROME_IMAGE;
 }
@@ -74,6 +87,11 @@ class ChromeContainerService {
    */
   proxyServerFor(config) {
     if (config.type !== 'proxy' || !config.proxy) return null;
+    // MITM primeiro: ele já sabe falar com o proxy upstream (inclusive com
+    // credenciais), e é o único caminho que reescreve User-Agent/Sec-CH-UA*.
+    if (config.mitmPort) {
+      return `http://host.docker.internal:${config.mitmPort}`;
+    }
     if (config.proxy.auth && config.forwarderPort) {
       return `http://host.docker.internal:${config.forwarderPort}`;
     }
@@ -81,8 +99,36 @@ class ChromeContainerService {
     return `${scheme}://${config.proxy.host}:${config.proxy.port}`;
   }
 
+  /**
+   * Hosts cujo certificado o Chrome deve aceitar do MITM.
+   *
+   * Vem de MITM_HOSTS (lista separada por vírgula) — é configuração, não
+   * descoberta: emitir certificado para um host que o Chrome não visita só
+   * aumentaria a lista de pins sem motivo. Os hosts de checagem de IP e de
+   * login são os que mais interessam, porque são os que leem os cabeçalhos.
+   */
+  mitmHosts() {
+    const configured = String(process.env.MITM_HOSTS || '').trim();
+    const list = (configured || 'ipinfo.io,ip-api.com,api.ipify.org,www.google.com,accounts.google.com,example.com')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean);
+    return list;
+  }
+
+  /** Pins SPKI dos hosts do MITM, para o --ignore-certificate-errors-spki-list. */
+  mitmPins(config) {
+    if (!config || !config.mitmPort) return [];
+    const mitmProxy = require('./mitm-proxy.service');
+    return mitmProxy.pinsFor(this.mitmHosts());
+  }
   /** Linha de flags do navegador para este perfil. */
   buildCli(config) {
+    // O Firefox nao le CHROME_CLI/BRAVE_CLI: as flags abaixo nao teriam efeito
+    // nele (a configuracao entra por policies.json, ver firefox.service).
+    // Devolver string vazia e melhor do que empilhar flags que ninguem le.
+    if (firefox.isFirefox(config.browser)) return '';
+
     const flags = [BASE_CLI];
     const fingerprint = config.fingerprint || null;
 
@@ -96,6 +142,18 @@ class ChromeContainerService {
     const proxyServer = this.proxyServerFor(config);
     if (proxyServer) flags.push(`--proxy-server=${proxyServer}`);
     if (fingerprint) flags.push(`--load-extension=${EXTENSION_CONTAINER_PATH}`);
+
+    // MITM: o Chrome precisa aceitar o certificado que o proxy local apresenta.
+    // O pin SPKI é mais estreito do que instalar uma CA no container — o Chrome
+    // aceita exatamente os certificados cujo SPKI estiver nesta lista, e nada
+    // mais. Os hosts são os que o perfil costuma abrir; qualquer outro host que
+    // o Chrome visite por HTTPS passa por túnel cego, sem inspeção.
+    if (config.mitmPort) {
+      const pins = this.mitmPins(config);
+      if (pins.length) {
+        flags.push(`--ignore-certificate-errors-spki-list=${pins.join(',')}`);
+      }
+    }
 
     // A página inicial é a MESMA nas três imagens: a constante vive no
     // cloakbrowser.service (é ele quem monta o comando do CloakBrowser) e aqui
@@ -113,6 +171,9 @@ class ChromeContainerService {
     // container (o roteador e o binário) e o fuso continua vindo do perfil.
     if (cloakbrowser.isCloakBrowser(config.browser)) {
       return cloakbrowser.containerEnv(config);
+    }
+    if (firefox.isFirefox(config.browser)) {
+      return firefox.containerEnv(config);
     }
 
     const fingerprint = config.fingerprint || {};
@@ -154,6 +215,15 @@ class ChromeContainerService {
       if (!cloakbrowser.isCloakBrowser(config.browser)) {
         hostConfig.ExtraHosts = [HOST_GATEWAY_ALIAS];
       }
+
+      // DNS do país: no modo proxy o navegador não partilha o namespace do
+      // gluetun, por isso o resolvedor tem de ser apontado explicitamente.
+      // Só se aplica quando há resolução local (SOCKS5/Firefox); com proxy HTTP
+      // o nome vai no CONNECT e o resolvedor local nunca é consultado.
+      if (config.dnsResolver && config.dnsResolver.ip) {
+        hostConfig.Dns = [config.dnsResolver.ip];
+        hostConfig.DnsOptions = ['timeout:2', 'attempts:2'];
+      }
     }
 
     // O CloakBrowser é o único que precisa de volume: o do perfil
@@ -188,6 +258,12 @@ class ChromeContainerService {
     // `exec "$@"` (o CHROME_CLI não existe nessa imagem).
     if (cloakbrowser.isCloakBrowser(config.browser)) {
       options.Cmd = cloakbrowser.serveCommand(config);
+    }
+    // O Firefox recebe a politica gerida pelo ENTRYPOINT, nao pelo Cmd: a
+    // imagem declara Entrypoint=["/init"] e, se o script fosse Cmd, o /init
+    // recebia-o como argumento e o s6 abortava ("can only run as pid 1").
+    if (firefox.isFirefox(config.browser)) {
+      options.Entrypoint = firefox.serveCommand(config);
     }
 
     // Nota: sem ExposedPorts no modo VPN — o Chrome compartilha o namespace de
@@ -245,6 +321,12 @@ class ChromeContainerService {
       const desiredCmd = this.buildCreateOptions(config).Cmd || [];
       if (JSON.stringify(info.Config.Cmd || []) !== JSON.stringify(desiredCmd)) return false;
     }
+    // O Firefox vive no Entrypoint: e ele que tem de bater certo, senao a
+    // instancia antiga (com o script no lugar errado) nunca seria recriada.
+    if (firefox.isFirefox(config.browser)) {
+      const desiredEntry = this.buildCreateOptions(config).Entrypoint || [];
+      if (JSON.stringify(info.Config.Entrypoint || []) !== JSON.stringify(desiredEntry)) return false;
+    }
 
     const desired = this.desiredEnv(config);
     const actual = {};
@@ -262,6 +344,13 @@ class ChromeContainerService {
     } else if (hostConfig.NetworkMode === `container:${config.gluetunName}`) {
       return false;
     }
+
+    // O resolvedor mudou (troca de país do proxy) exige recriar: o Dns de um
+    // container em execução não pode ser alterado.
+    const desiredDns = config.dnsResolver && config.dnsResolver.ip
+      ? [config.dnsResolver.ip] : [];
+    const actualDns = hostConfig.Dns || [];
+    if (JSON.stringify(actualDns) !== JSON.stringify(desiredDns)) return false;
 
     // O volume do perfil precisa estar montado: é o motivo para recriar as
     // instâncias criadas antes desta versão.
@@ -286,22 +375,41 @@ class ChromeContainerService {
 
     if (!info) {
       await this.create(config);
+      await this._ensureDnsNetwork(config);
       return { exists: true, created: true, recreated: false };
     }
 
     if (this.matchesSpec(info, config)) {
+      await this._ensureDnsNetwork(config);
       return { exists: true, created: false, recreated: false };
     }
 
     await this.remove(config.id);
     await this.create(config);
+    await this._ensureDnsNetwork(config);
     return { exists: true, created: true, recreated: true };
+  }
+
+  /**
+   * Liga o container à rede dos gluetuns para que o resolvedor do país seja
+   * alcançável. Sem isto o DOCKER-ISOLATION bloqueia o tráfego entre as redes
+   * bridge (172.17.x) e rotaproxy_default (172.18.x) — medido no servidor.
+   * Idempotente: o serviço verifica se já está ligado.
+   */
+  async _ensureDnsNetwork(config) {
+    if (!config.dnsResolver || !config.dnsResolver.network) return;
+    try {
+      await dnsRouting.ensureNetwork(`chrome${config.id}`);
+    } catch (err) {
+      console.warn(`[WARN] [dns-routing] Falha ao ligar chrome${config.id} à rede do resolvedor:`, err.message);
+    }
   }
 }
 
 module.exports = new ChromeContainerService();
 module.exports.CHROME_IMAGE = CHROME_IMAGE;
 module.exports.BRAVE_IMAGE = BRAVE_IMAGE;
+module.exports.FIREFOX_IMAGE = FIREFOX_IMAGE;
 module.exports.EXTENSION_CONTAINER_PATH = EXTENSION_CONTAINER_PATH;
 module.exports.SHM_SIZE = SHM_SIZE;
 module.exports.imageFor = imageFor;
