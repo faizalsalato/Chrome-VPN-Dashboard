@@ -233,7 +233,10 @@ class ProxiesService {
         // Nome automático: host:porta (ou user@host:porta se autenticado)
         const name = (it.name && String(it.name).trim())
           || (hasAuth ? `${user}@${host}:${port}` : `${host}:${port}`);
-        const scheme = it.scheme === 'https' ? 'https' : 'http';
+        // `socks5` preservado: colapsar em `http` apagava o esquema no import e
+        // a instancia deixava de resolver nomes pelo resolvedor do pais.
+        const scheme = it.scheme === 'https' ? 'https'
+          : (it.scheme === 'socks5' ? 'socks5' : 'http');
         insert.run(name.trim(), host, port, scheme, hasAuth ? 1 : 0, user, pass);
         existing.add(key); // evita duplicata dentro do próprio lote
         imported++;

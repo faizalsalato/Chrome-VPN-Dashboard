@@ -92,7 +92,12 @@ router.post('/', async (req, res, next) => {
         port,
         user: proxy.user || '',
         pass: proxy.pass || '',
-        scheme: proxy.scheme === 'https' ? 'https' : 'http',
+        // `socks5` e um esquema legitimo e NAO pode ser colapsado em `http`:
+        // com SOCKS5 o relay resolve o nome pelo resolvedor do pais, e e isso
+        // que faz o DNS deixar de ser o do proxy. Colapsar aqui apagava o
+        // SOCKS5 em silencio e a instancia nascia em HTTP.
+        scheme: proxy.scheme === 'https' ? 'https'
+          : (proxy.scheme === 'socks5' ? 'socks5' : 'http'),
         auth
       };
     }
