@@ -70,7 +70,20 @@ health-final.sh
 # Scripts de diagnostico da investigacao de DNS/TLS/browser (scratch)
 add-*-test.js
 cdp-find.sh
+cdp_*.py
+cdp-*.sh
 check-browsers.sh
+cleanup-and-list.sh
+diag-cdp*.sh
+diag-ext-load.sh
+diag-headless.sh
+diag-in-chrome1.sh
+diag-webgl.sh
+read_signals.py
+recon-*.sh
+run-cdp-pure.sh
+run-signals-in.sh
+verify-plugin.sh
 check-version.sh
 fp-chrome1.sh
 restart-chrome1.sh
