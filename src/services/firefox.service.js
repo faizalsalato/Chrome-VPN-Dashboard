@@ -154,7 +154,13 @@ class FirefoxService {
             Locked: true,
             HTTPProxy: proxy.host,
             SSLProxy: proxy.host,
-            UseHTTPProxyForAllProtocols: true
+            UseHTTPProxyForAllProtocols: true,
+            // Com proxy HTTP o Firefox entrega o nome no CONNECT e quem resolve
+            // e o proxy (pode ser noutro pais -> whoer desconta). Quando o
+            // dashboard preparou um resolvedor do pais no container, pedir
+            // resolucao local faz o nome sair pelo resolver certo. Sem isso
+            // (dnsLocal falso) mantem-se o comportamento antigo, sem risco.
+            ...(config.dnsLocal ? { UseProxyForDNS: true } : {})
           };
         }
       }

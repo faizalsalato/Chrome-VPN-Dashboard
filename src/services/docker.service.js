@@ -58,9 +58,12 @@ class DockerService {
       // HTTP não serve. É o que permite ao Firefox resolver nomes localmente.
       relayPort: proxy && proxy.auth && !isCloak && proxy.scheme === 'socks5'
         ? socksRelay.getPort(config.id) : null,
-      // Resolução local de nomes: só o Firefox com SOCKS5. É a condição para o
-      // DNS do país ter efeito — com proxy HTTP o nome vai no CONNECT.
-      dnsLocal: browser === 'firefox' && !!proxy && proxy.scheme === 'socks5',
+      // Resolução local de nomes no Firefox. Com SOCKS5 o Firefox resolve pelo
+      // resolver do container (UseProxyForDNS: false). Com HTTP, o nome vai no
+      // CONNECT; para o resolver do país ter efeito é preciso pedir ao Firefox
+      // que resolva localmente (UseProxyForDNS: true na policy). Em ambos os
+      // casos o resolvedor do container é que decide o DNS visto pelo whoer.
+      dnsLocal: browser === 'firefox' && !!proxy,
       // MITM: quando o perfil tem fingerprint, o tráfego HTTPS passa por um
       // proxy local que reescreve User-Agent e Sec-CH-UA* — sem isto o servidor
       // de destino vê o binário Linux mesmo com a página dizendo macOS.
@@ -82,7 +85,11 @@ class DockerService {
     // ao IP de saída. Preparar aqui guarda o IP em cache para que as chamadas
     // síncronas (buildHostConfig/matchesSpec) sejam determinísticas.
     if (type === 'proxy' && config.dnsLocal && !isCloak) {
-      const country = (config.fingerprint && (config.fingerprint.country || config.fingerprint.countryCode))
+      const fp = config.fingerprint || {};
+      // O país pode vir em vários sítios. Na instância 6 (criada à mão) o
+      // código está em `fingerprint.geo.countryCode`, não em `fingerprint.country`.
+      const country = fp.countryCode || fp.country
+        || (fp.geo && (fp.geo.countryCode || fp.geo.country))
         || config.proxyCountry || null;
       if (country) {
         await dnsRouting.prepare(country);
