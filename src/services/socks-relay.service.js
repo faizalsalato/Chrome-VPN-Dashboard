@@ -129,8 +129,11 @@ class SocksRelayService {
         const dns = require('dns');
         const r = new dns.Resolver();
         r.setServers([dnsServer]);
-        r.setTimeout(2500);
+        // Sem r.setTimeout(): nao existe nessa API e lancava excecao que o
+        // catch engolia, devolvendo null sempre. O timeout e nosso.
+        const timer = setTimeout(() => resolve(null), 2500);
         r.resolve4(name, (err, addresses) => {
+          clearTimeout(timer);
           resolve(!err && addresses && addresses.length ? addresses[0] : null);
         });
       } catch (_) {
