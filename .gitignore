@@ -58,3 +58,11 @@ wire-brdns.sh
 *.bak
 *.bak-*
 *.bak.OLD
+
+# Classificadores de sincronizacao (scratch)
+classify-server.sh
+diff-real.sh
+diff-extras.sh
+check-config.sh
+sync-server.sh
+health-final.sh
