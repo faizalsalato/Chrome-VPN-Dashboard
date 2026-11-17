@@ -71,6 +71,12 @@ health-final.sh
 add-*-test.js
 cdp-find.sh
 check-browsers.sh
+check-version.sh
+fp-chrome1.sh
+restart-chrome1.sh
+sync-fingerprint.sh
+sync-ui.sh
+test-create-firefox.sh
 create-chrome-socks.sh
 egress-final.sh
 fix-await.js
