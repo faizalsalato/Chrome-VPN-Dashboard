@@ -44,4 +44,22 @@ it('todos os chamadores de chromeConfig usam await', () => {
   }
 });
 
+// O MITM interceta todo o HTTPS e so aceita 6 hosts pinados; qualquer
+// outro site da ERR_CERT_AUTHORITY_INVALID. Por default tem de estar OFF.
+it('MITM desligado por default nao poe mitmPort no chromeConfig', async () => {
+  const saved = process.env.MITM_ENABLED;
+  delete process.env.MITM_ENABLED;
+  try {
+    const cc = await dockerService.chromeConfig({
+      id: 8, port: 4008, type: 'proxy', browser: 'chromium',
+      proxy: { host: 'x', port: 80, scheme: 'http', auth: false },
+      fingerprint: { platform: 'Linux' }
+    });
+    expect(cc.mitmPort).toBeNull();
+  } finally {
+    if (saved === undefined) delete process.env.MITM_ENABLED;
+    else process.env.MITM_ENABLED = saved;
+  }
+});
+
 });

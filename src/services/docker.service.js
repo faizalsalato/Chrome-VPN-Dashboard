@@ -67,7 +67,13 @@ class DockerService {
       // MITM: quando o perfil tem fingerprint, o tráfego HTTPS passa por um
       // proxy local que reescreve User-Agent e Sec-CH-UA* — sem isto o servidor
       // de destino vê o binário Linux mesmo com a página dizendo macOS.
-      mitmPort: proxy && !isCloak && config.fingerprint ? mitmProxy.getPort(config.id) : null,
+      // MITM desligado por default: interceta TODO o HTTPS e apresenta uma CA
+      // local que o Chrome so aceita para os 6 hosts pinados. Qualquer outro
+      // site (whoer, google, banco) da ERR_CERT_AUTHORITY_INVALID. A extensao
+      // ja nao consegue reescrever Sec-CH-UA* no fio, entao o MITM so trazia
+      // dano. Ativar so com MITM_ENABLED=1 e com todos os hosts em MITM_HOSTS.
+      mitmPort: proxy && !isCloak && config.fingerprint && process.env.MITM_ENABLED === '1'
+        ? mitmProxy.getPort(config.id) : null,
       // Porta interna do navegador (9223 no CloakBrowser: o roteador que serve
       // CDP e tela) — é a que o gluetun publica no modo VPN.
       displayPort: chromeContainer.internalPortFor(browser),
