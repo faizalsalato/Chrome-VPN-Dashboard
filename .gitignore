@@ -69,6 +69,7 @@ health-final.sh
 
 # Scripts de diagnostico da investigacao de DNS/TLS/browser (scratch)
 add-*-test.js
+cdp-find.sh
 check-browsers.sh
 create-chrome-socks.sh
 egress-final.sh
