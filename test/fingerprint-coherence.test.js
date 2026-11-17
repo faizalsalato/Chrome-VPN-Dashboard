@@ -47,6 +47,16 @@ describe('fingerprint.service — coerencia do perfil', () => {
 });
 
 describe('extensao — mascaramento de toString', () => {
+  it('NAO cria plugins com nomes sinteticos (sinal de bot)', () => {
+    // Evidencia CDP: o Turnstile via plugins = ["Plugin 0", "Plugin 1", ...].
+    // Nenhum browser real produz esses nomes; o Chromium real devolve
+    // "PDF Viewer", "Chrome PDF Viewer", etc. A extensao nao deve tocar em
+    // navigator.plugins — deixa os nativos.
+    expect(contentJs).not.toMatch(/'Plugin '\s*\+/);
+    expect(contentJs).not.toMatch(/"Plugin "\s*\+/);
+    expect(contentJs).toContain('NAO falsificar');
+  });
+
   it('marca as funcoes reescritas como nativas', () => {
     expect(contentJs).toContain('Function.prototype');
     expect(contentJs).toContain("'toString'");

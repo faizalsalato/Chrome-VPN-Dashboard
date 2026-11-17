@@ -84,20 +84,13 @@
 
   if (FP.doNotTrack != null) setValue(nav, 'doNotTrack', FP.doNotTrack);
 
-  // navigator.plugins / mimeTypes length (anti-headless heuristic)
-  if (FP.pluginsCount != null) {
-    try {
-      Object.defineProperty(nav, 'plugins', {
-        get: markNative(function plugins() {
-          var arr = [];
-          for (var i = 0; i < FP.pluginsCount; i++) arr.push({ name: 'Plugin ' + i });
-          arr.length = FP.pluginsCount;
-          return arr;
-        }, 'get plugins'),
-        configurable: true
-      });
-    } catch (e) { /* ignore */ }
-  }
+  // navigator.plugins: NAO falsificar.
+  // O codigo antigo criava `Plugin 0`, `Plugin 1`, ... a partir de pluginsCount.
+  // E um nome que nenhum browser real produz (o Chromium real devolve
+  // "PDF Viewer", "Chrome PDF Viewer", "Chromium PDF Viewer", ...), e o
+  // Cloudflare Turnstile deteta a lista sintetica de imediato. O Chromium real
+  // JA expoe os plugins corretos, entao a melhor accao e nao tocar neles.
+  // (pluginsCount fica no perfil por compatibilidade, mas deixa de ser usado.)
 
   // --- User-Agent Client Hints (navigator.userAgentData) ---
   // O Chrome anuncia aqui a plataforma REAL do sistema e o build REAL do
