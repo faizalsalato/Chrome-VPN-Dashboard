@@ -1,3 +1,4 @@
+const fs = require('fs');
 /**
  * docker.service.chromeConfig deve escolher o resolvedor do pais mesmo quando
  * o config de ENTRADA nao traz dnsLocal (ele e calculado dentro da funcao).
@@ -32,4 +33,15 @@ describe('chromeConfig - DNS do pais', () => {
     expect(cc.dnsLocal).toBe(false);
     expect(cc.dnsResolver).toBeUndefined();
   });
+// Regressao critica: chromeConfig passou a ser async. Se um chamador nao
+// usar await, o Docker recebe uma Promise e falha com 'invalid port: undefined'.
+it('todos os chamadores de chromeConfig usam await', () => {
+  const src = fs.readFileSync(require.resolve('../src/services/docker.service'), 'utf8');
+  const chamadas = src.match(/(?:await )?this\.chromeConfig\(config\)/g) || [];
+  expect(chamadas.length).toBeGreaterThan(0);
+  for (const c of chamadas) {
+    expect(c.startsWith('await')).toBe(true);
+  }
+});
+
 });

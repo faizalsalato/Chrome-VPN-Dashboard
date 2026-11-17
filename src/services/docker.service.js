@@ -106,7 +106,7 @@ class DockerService {
    * /config do perfil — re-injete o fingerprint depois.
    */
   async ensureChromeContainer(config) {
-    return chromeContainer.ensure(this.chromeConfig(config));
+    return chromeContainer.ensure(await this.chromeConfig(config));
   }
 
   /**
@@ -116,7 +116,7 @@ class DockerService {
    */
   async recreateChromeContainer(config) {
     await chromeContainer.remove(config.id);
-    return chromeContainer.ensure(this.chromeConfig(config));
+    return chromeContainer.ensure(await this.chromeConfig(config));
   }
 
   /**
@@ -458,7 +458,7 @@ class DockerService {
     });
 
     try {
-      await chromeContainer.create(this.chromeConfig(config));
+      await chromeContainer.create(await this.chromeConfig(config));
 
       // Injeta a extensão de fingerprint (putArchive funciona com o container
       // parado) ANTES de qualquer start — a extensão fica persistida no perfil.
@@ -497,7 +497,7 @@ class DockerService {
     config.proxy = Object.assign({}, proxy, { auth });
 
     const isCloak = cloakbrowser.isCloakBrowser(config.browser);
-    await chromeContainer.create(this.chromeConfig(config));
+    await chromeContainer.create(await this.chromeConfig(config));
 
     // O CloakBrowser traz a impressão digital no binário: nada de extensão.
     if (!isCloak) await this._injectFingerprint(id, config.fingerprint);
