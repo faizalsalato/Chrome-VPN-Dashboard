@@ -27,6 +27,37 @@
     } catch (e) { /* ignore */ }
   }
 
+  // --- Function.prototype.toString: esconder o monkey-patch ---
+  // Toda funcao que reescrevemos abaixo passa a devolver o codigo-fonte dela ao
+  // `toString()`. Um detector de bot (o Turnstile da Cloudflare e o caso obvio)
+  // chama `navigator.userAgent.toString()` e `Date.prototype.getTimezoneOffset
+  // .toString()` e espera ver `function () { [native code] }`. Sem este mascaramento
+  // o patch era legivel em texto simples — o perfil dizia "sem automacao" e o
+  // codigo provava o contrario. Era a razao de o Chromium falhar o Turnstile
+  // enquanto o Firefox (que nao leva extensao nenhuma) passava no mesmo IP.
+  var nativeToString = Function.prototype.toString;
+  var patched = new WeakMap(); // funcao falsa -> texto nativo a devolver
+
+  function markNative(fn, name) {
+    if (typeof fn !== 'function') return fn;
+    try {
+      patched.set(fn, 'function ' + (name || '') + '() { [native code] }');
+    } catch (e) { /* ignore */ }
+    return fn;
+  }
+
+  try {
+    var fakeToString = function toString() {
+      var src = patched.get(this);
+      if (src !== undefined) return src;
+      return nativeToString.call(this);
+    };
+    patched.set(fakeToString, 'function toString() { [native code] }');
+    Object.defineProperty(Function.prototype, 'toString', {
+      value: fakeToString, configurable: true, writable: true
+    });
+  } catch (e) { /* ignore */ }
+
   var nav = navigator;
 
   // --- navigator.* ---
@@ -39,12 +70,12 @@
   if (FP.deviceMemory != null) setValue(nav, 'deviceMemory', FP.deviceMemory);
   if (FP.maxTouchPoints != null) setValue(nav, 'maxTouchPoints', FP.maxTouchPoints);
   // Automation flag should read false for a "clean" browser.
-  define(nav, 'webdriver', function () { return false; });
+  define(nav, 'webdriver', markNative(function webdriver() { return false; }, 'get webdriver'));
 
   if (Array.isArray(FP.languages)) {
     try {
       Object.defineProperty(nav, 'languages', {
-        get: function () { return Object.freeze(FP.languages.slice()); },
+        get: markNative(function languages() { return Object.freeze(FP.languages.slice()); }, 'get languages'),
         configurable: true
       });
     } catch (e) { /* ignore */ }
@@ -57,12 +88,12 @@
   if (FP.pluginsCount != null) {
     try {
       Object.defineProperty(nav, 'plugins', {
-        get: function () {
+        get: markNative(function plugins() {
           var arr = [];
           for (var i = 0; i < FP.pluginsCount; i++) arr.push({ name: 'Plugin ' + i });
           arr.length = FP.pluginsCount;
           return arr;
-        },
+        }, 'get plugins'),
         configurable: true
       });
     } catch (e) { /* ignore */ }
@@ -113,8 +144,8 @@
     brands: brandList(chMajor),
     mobile: false,
     platform: chPlatform,
-    toJSON: buildHints,
-    getHighEntropyValues: function () {
+    toJSON: markNative(buildHints, 'toJSON'),
+    getHighEntropyValues: markNative(function getHighEntropyValues() {
       // Devolve o conjunto completo: campos a mais sao inofensivos e faltar um
       // campo pedido seria um sinal tao claro quanto o valor errado.
       return Promise.resolve({
@@ -129,7 +160,7 @@
         uaFullVersion: chFullVersion,
         wow64: false
       });
-    }
+    }, 'getHighEntropyValues')
   };
 
   // Mantem o prototipo real para `navigator.userAgentData instanceof
@@ -141,7 +172,7 @@
       Object.setPrototypeOf(uaData, Object.getPrototypeOf(originalUaData));
     } catch (e) { /* ignore */ }
   }
-  define(nav, 'userAgentData', function () { return uaData; });
+  define(nav, 'userAgentData', markNative(function userAgentData() { return uaData; }, 'get userAgentData'));
 
   // --- screen.* ---
   var scr = screen;
@@ -177,11 +208,12 @@
     function patchWebGL(ContextCtor) {
       if (!ContextCtor || !ContextCtor.prototype || !ContextCtor.prototype.getParameter) return;
       var origGetParameter = ContextCtor.prototype.getParameter;
-      ContextCtor.prototype.getParameter = function (parameter) {
+      var patchedGetParameter = markNative(function getParameter(parameter) {
         if (parameter === UNMASKED_VENDOR && vendor) return vendor;
         if (parameter === UNMASKED_RENDERER && renderer) return renderer;
         return origGetParameter.call(this, parameter);
-      };
+      }, 'getParameter');
+      ContextCtor.prototype.getParameter = patchedGetParameter;
     }
 
     patchWebGL(typeof WebGLRenderingContext !== 'undefined' ? WebGLRenderingContext : null);
@@ -319,17 +351,17 @@
   }
 
   function wrapIntl(Original, defaultTimeZone) {
-    function Patched(locales, options) {
+    var Patched = markNative(function (locales, options) {
       var args = withDefaults(locales, options, defaultTimeZone);
       return new Original(args[0], args[1]);
-    }
+    }, Original.name || 'DateTimeFormat');
     try {
       Object.setPrototypeOf(Patched, Original);
       Patched.prototype = Original.prototype;
       if (Original.supportedLocalesOf) {
-        Patched.supportedLocalesOf = function (locales, options) {
+        Patched.supportedLocalesOf = markNative(function supportedLocalesOf(locales, options) {
           return Original.supportedLocalesOf(locales, options);
-        };
+        }, 'supportedLocalesOf');
       }
     } catch (e) { /* ignore */ }
     return Patched;
@@ -345,38 +377,38 @@
   if (zoneOk) {
     try {
       var OrigGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-      Date.prototype.getTimezoneOffset = function () {
+      Date.prototype.getTimezoneOffset = markNative(function getTimezoneOffset() {
         if (isNaN(this.getTime())) return OrigGetTimezoneOffset.call(this);
         return Math.round(offsetMinutes(this));
-      };
+      }, 'getTimezoneOffset');
 
       var OrigToString = Date.prototype.toString;
-      Date.prototype.toString = function () {
+      Date.prototype.toString = markNative(function toString() {
         if (isNaN(this.getTime())) return OrigToString.call(this);
         return toStringIn(this);
-      };
+      }, 'toString');
 
       var OrigToTimeString = Date.prototype.toTimeString;
-      Date.prototype.toTimeString = function () {
+      Date.prototype.toTimeString = markNative(function toTimeString() {
         if (isNaN(this.getTime())) return OrigToTimeString.call(this);
         return toTimeStringIn(this);
-      };
+      }, 'toTimeString');
 
       var OrigToDateString = Date.prototype.toDateString;
-      Date.prototype.toDateString = function () {
+      Date.prototype.toDateString = markNative(function toDateString() {
         if (isNaN(this.getTime())) return OrigToDateString.call(this);
         return toDateStringIn(this);
-      };
+      }, 'toDateString');
 
       // Variantes toLocale*: injeta idioma e fuso padrão, preservando os
       // argumentos explícitos do chamador.
       ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'].forEach(function (name) {
         var orig = Date.prototype[name];
         if (typeof orig !== 'function') return;
-        Date.prototype[name] = function (locales, options) {
+        Date.prototype[name] = markNative(function (locales, options) {
           var args = withDefaults(locales, options, timeZone);
           return orig.call(this, args[0], args[1]);
-        };
+        }, name);
       });
     } catch (e) { /* ignore */ }
   }

@@ -55,12 +55,17 @@ const DEFAULT_PLATFORM = PLATFORMS[0];
 const SCREENS = [
   [1366, 768]
 ];
+// GPUs no formato que o Chromium REALMENTE emite no Linux: ANGLE sobre Mesa.
+// O pool antigo misturava renderers nativos de macOS ("AMD Radeon Pro 5500M
+// OpenGL Engine") com formatos que o Chromium nunca escreve. Um perfil Linux a
+// anunciar uma GPU de MacBook Pro e a contradicao mais grosseira que um detector
+// de bot consegue ler no WebGL — e o Turnstile le exatamente isso.
 const GPUS = [
-  { vendor: 'Intel Inc.', renderer: 'Intel Iris OpenGL Engine' },
-  { vendor: 'Intel Inc.', renderer: 'Intel UHD Graphics 630' },
-  { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1650/PCIe/SSE2' },
-  { vendor: 'AMD', renderer: 'AMD Radeon Pro 5500M OpenGL Engine' },
-  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel UHD Graphics 630)' }
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 630 (CFL GT2), OpenGL 4.6)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (TGL GT2), OpenGL 4.6)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650/PCIe/SSE2, OpenGL 4.5.0)' },
+  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Series (POLARIS10, DRM 3.42.0), OpenGL 4.6)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Mesa Intel(R) HD Graphics 520 (SKL GT2), OpenGL 4.6)' }
 ];
 
 // Client Hints derivados da plataforma da UA (navigator.platform).
@@ -114,6 +119,11 @@ class FingerprintService {
     const chromeFullVersion = chromeVersion.versionFor();
     const chromeMajor = parseInt(chromeFullVersion, 10);
     const devicePixelRatio = pick([1, 2]);
+    // colorDepth e pixelDepth sao SEMPRE iguais num browser real: sao o mesmo
+    // valor lido por duas vias. O gerador sorteava-os em separado e produzia
+    // "24 / 30", uma combinacao que nao existe em maquina nenhuma — sinal
+    // direto de perfil falsificado.
+    const colorDepth = pick([24, 24, 24, 30]);
     const profile = localeProfile.fromLocation(normalizeLocationArg(location));
 
     return Object.assign(
@@ -136,8 +146,8 @@ class FingerprintService {
           availHeight: height - pick([40, 60, 80]),
           availLeft: 0,
           availTop: 0,
-          colorDepth: pick([24, 30]),
-          pixelDepth: pick([24, 30]),
+          colorDepth,
+          pixelDepth: colorDepth,
           outerWidth: width,
           outerHeight: height - pick([80, 90, 100]),
           innerWidth: width - pick([0, 15]),
