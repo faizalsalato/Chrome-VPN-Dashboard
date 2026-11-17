@@ -84,7 +84,7 @@ class DockerService {
     // é consultado. O país vem do fingerprint da instância, que já é alinhado
     // ao IP de saída. Preparar aqui guarda o IP em cache para que as chamadas
     // síncronas (buildHostConfig/matchesSpec) sejam determinísticas.
-    if (type === 'proxy' && config.dnsLocal && !isCloak) {
+    if (type === 'proxy' && result.dnsLocal && !isCloak) {
       const fp = config.fingerprint || {};
       // O país pode vir em vários sítios. Na instância 6 (criada à mão) o
       // código está em `fingerprint.geo.countryCode`, não em `fingerprint.country`.
